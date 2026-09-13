@@ -183,3 +183,4 @@ class RuntimeSnapshot:
     verification: list[VerificationTask]
     alarms: tuple[AlarmRecord, ...] = ()
     incidents: tuple[IncidentRecord, ...] = ()
+    water_recovery: dict[str, Any] = field(default_factory=dict)
