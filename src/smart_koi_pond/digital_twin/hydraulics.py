@@ -17,11 +17,14 @@ class EngineeringProvenance(StrEnum):
     def normalize(cls, value: str | "EngineeringProvenance") -> "EngineeringProvenance":
         if isinstance(value, cls):
             return value
+        text = str(value)
         legacy = {
             "DESIGN_ASSUMPTION": cls.USER_CONFIGURED_SCENARIO,
             "ESTIMATED": cls.CALCULATED,
         }
-        return legacy.get(str(value), cls(str(value)))
+        if text in legacy:
+            return legacy[text]
+        return cls(text)
 
 
 class HydraulicRouteRole(StrEnum):
