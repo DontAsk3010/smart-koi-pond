@@ -28,9 +28,14 @@ from smart_koi_pond.domain.models import (
     CommandIntent,
     RuntimeSnapshot,
 )
+from smart_koi_pond.events.historian import RuntimeHistorian
+from smart_koi_pond.events.lifecycle import AlarmIncidentManager
 from smart_koi_pond.events.log import EventLog
 from smart_koi_pond.events.publication import CanonicalRuntimePublisher
-from smart_koi_pond.persistence.checkpoint import capture_checkpoint, restore_checkpoint
+from smart_koi_pond.persistence.checkpoint import (
+    capture_checkpoint as capture_runtime_checkpoint,
+    restore_checkpoint as restore_runtime_checkpoint,
+)
 from smart_koi_pond.sensors.virtual import VirtualSensorSuite
 
 
@@ -43,6 +48,7 @@ class DigitalTwinRuntime:
         clock: SimulationClock | None = None,
         run_id: str | None = None,
         config_version: str = "simulation-policy-v1",
+        historian_path: str | None = None,
     ) -> None:
         self.model = model
         self.policy = policy
@@ -55,6 +61,8 @@ class DigitalTwinRuntime:
         self.events = EventLog()
         self.verification = VerificationManager()
         self.modes = OperatingModeManager(self.actuators, self.sensors, self.events)
+        self.alarm_incidents = AlarmIncidentManager(self.events)
+        self.historian = RuntimeHistorian(historian_path)
         self.publisher = CanonicalRuntimePublisher()
         self._last_feedback = self.actuators.feedback_map()
 
@@ -194,6 +202,8 @@ class DigitalTwinRuntime:
             },
         )
 
+        self.alarm_incidents.update(now, classification, completed)
+
         assets = {
             asset_id: AssetStatus(
                 asset_id=asset_id,
@@ -204,7 +214,7 @@ class DigitalTwinRuntime:
             for asset_id, asset in self.actuators.assets.items()
         }
 
-        return RuntimeSnapshot(
+        snapshot = RuntimeSnapshot(
             timestamp=now,
             run_id=self.run_id,
             config_version=self.config_version,
@@ -223,21 +233,53 @@ class DigitalTwinRuntime:
             commands=commands,
             feedback=feedback,
             verification=list(self.verification.tasks),
+            alarms=self.alarm_incidents.snapshot_alarms(),
+            incidents=self.alarm_incidents.snapshot_incidents(),
         )
+        latest_event = self.events.events[-1].sequence if self.events.events else 0
+        self.historian.append(
+            run_id=self.run_id,
+            event_sequence=latest_event,
+            snapshot=snapshot,
+        )
+        return snapshot
 
     def capture_checkpoint(self):
-        return capture_checkpoint(self)
+        checkpoint = capture_runtime_checkpoint(self)
+        checkpoint["alarm_incident_state"] = self.alarm_incidents.checkpoint_state()
+        return checkpoint
 
     def restore_checkpoint(self, checkpoint) -> None:
-        restore_checkpoint(self, checkpoint)
+        restore_runtime_checkpoint(self, checkpoint)
+        self.alarm_incidents.restore_checkpoint_state(
+            checkpoint.get("alarm_incident_state")
+        )
 
     def publish(self, snapshot: RuntimeSnapshot, *, after_sequence: int = 0):
-        return self.publisher.publish(
+        publication = self.publisher.publish(
             run_id=self.run_id,
             snapshot=snapshot,
             event_log=self.events,
             after_sequence=after_sequence,
         )
+        publication["historian_latest_frame_sequence"] = self.historian.latest_sequence
+        return publication
+
+    def recent_history(self, limit: int = 100):
+        return self.historian.recent(limit=limit, run_id=self.run_id)
+
+    def playback_frame(self, frame_sequence: int):
+        return self.historian.by_sequence(frame_sequence, run_id=self.run_id)
+
+    def acknowledge_alarm(self, alarm_id: str, actor: str):
+        return self.alarm_incidents.acknowledge(
+            alarm_id,
+            actor,
+            self.clock.current,
+        )
+
+    def incident_evidence(self, incident_id: str):
+        return self.alarm_incidents.evidence_for_incident(incident_id)
 
     def start_manual_maintenance(
         self,

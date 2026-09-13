@@ -108,17 +108,22 @@ def test_publication_cursor_reconnect_returns_only_newer_events() -> None:
     assert delta["snapshot"]["simulation_paused"] is True
 
 
-def test_ui_shell_is_live_contract_bound_not_hard_coded_operational_state() -> None:
+def test_ui_shell_is_live_contract_bound_with_alarm_and_playback() -> None:
     assert "SIMULATION / NO REAL DEVICE CONTROL" in INDEX_HTML
+    assert "PLAYBACK / READ ONLY" in INDEX_HTML
     assert "/api/runtime?after=" in INDEX_HTML
     assert "/api/command" in INDEX_HTML
+    assert "/api/history?limit=" in INDEX_HTML
+    assert "/api/playback?frame=" in INDEX_HTML
+    assert "/api/incident?id=" in INDEX_HTML
+    assert "acknowledge_alarm" in INDEX_HTML
     assert "Overview" in INDEX_HTML
     assert "Pond Schematic" in INDEX_HTML
     assert "Trends & Graphs" in INDEX_HTML
     assert "Scenario Simulator" in INDEX_HTML
     assert "Control Logic" in INDEX_HTML
     assert "Event Log" in INDEX_HTML
-    assert "Dedicated alarm/incident lifecycle is not yet implemented" in INDEX_HTML
+    assert "not yet implemented" not in INDEX_HTML
 
 
 def test_http_adapter_serves_canonical_publication_and_role_gated_commands() -> None:
@@ -153,6 +158,68 @@ def test_http_adapter_serves_canonical_publication_and_role_gated_commands() -> 
             accepted = json.loads(response.read())
         assert accepted["accepted"] is True
         assert accepted["publication"]["snapshot"]["simulation_paused"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_http_historian_playback_incident_and_alarm_acknowledgement() -> None:
+    service = RuntimeApplicationService(make_runtime())
+    service.runtime.model.set_truth("dissolved_oxygen_mg_l", 4.6)
+    service.step(0)
+    current = service.last_snapshot
+    alarm_id = current.alarms[0].alarm_id
+    incident_id = current.incidents[0].incident_id
+
+    server = create_server(service, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address
+    try:
+        with urlopen(f"http://{host}:{port}/api/history?limit=20", timeout=2) as response:
+            history = json.loads(response.read())
+        assert history["frames"]
+        frame = history["frames"][-1]["frame_sequence"]
+
+        with urlopen(
+            f"http://{host}:{port}/api/playback?frame={frame}",
+            timeout=2,
+        ) as response:
+            playback = json.loads(response.read())
+        assert playback["frame_sequence"] == frame
+        assert playback["snapshot"]["run_id"] == "ui-test-run"
+
+        with urlopen(
+            f"http://{host}:{port}/api/incident?id={incident_id}",
+            timeout=2,
+        ) as response:
+            incident = json.loads(response.read())
+        assert incident["incident_id"] == incident_id
+        assert incident["events"]
+
+        body = json.dumps(
+            {
+                "action": "acknowledge_alarm",
+                "payload": {"alarm_id": alarm_id, "actor": "test-operator"},
+            }
+        ).encode()
+        request = Request(
+            f"http://{host}:{port}/api/command",
+            data=body,
+            headers={"Content-Type": "application/json", "X-Koi-Role": "operator"},
+            method="POST",
+        )
+        with urlopen(request, timeout=2) as response:
+            acknowledged = json.loads(response.read())
+
+        alarm = next(
+            item
+            for item in acknowledged["publication"]["snapshot"]["alarms"]
+            if item["alarm_id"] == alarm_id
+        )
+        assert alarm["acknowledged_by"] == "test-operator"
+        assert alarm["lifecycle"] != "RESOLVED"
     finally:
         server.shutdown()
         server.server_close()

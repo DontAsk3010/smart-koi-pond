@@ -83,6 +83,20 @@ class VerificationStatus(StrEnum):
     ABORTED_BY_MODE_CHANGE = "ABORTED_BY_MODE_CHANGE"
 
 
+class AlarmLifecycle(StrEnum):
+    OPEN = "OPEN"
+    CORRECTIVE_ACTIVE = "CORRECTIVE_ACTIVE"
+    RECOVERING = "RECOVERING"
+    ESCALATED = "ESCALATED"
+    RESOLVED = "RESOLVED"
+
+
+class IncidentLifecycle(StrEnum):
+    OPEN = "OPEN"
+    RECOVERING = "RECOVERING"
+    RESOLVED = "RESOLVED"
+
+
 class EventType(StrEnum):
     STATE = "STATE"
     COMMAND = "COMMAND"
@@ -91,3 +105,5 @@ class EventType(StrEnum):
     SENSOR_QUALITY = "SENSOR_QUALITY"
     MODE = "MODE"
     SCENARIO = "SCENARIO"
+    ALARM = "ALARM"
+    INCIDENT = "INCIDENT"

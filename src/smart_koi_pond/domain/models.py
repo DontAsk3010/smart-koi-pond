@@ -3,11 +3,13 @@ from datetime import datetime
 from typing import Any
 
 from .enums import (
+    AlarmLifecycle,
     AvailabilityState,
     CommandOwner,
     DataQuality,
     EventType,
     ExecutionMode,
+    IncidentLifecycle,
     OperatingMode,
     SystemState,
     VerificationStatus,
@@ -130,6 +132,34 @@ class AssetStatus:
 
 
 @dataclass(slots=True)
+class AlarmRecord:
+    alarm_id: str
+    condition_key: str
+    code: str
+    opened_at: datetime
+    lifecycle: AlarmLifecycle
+    source_state: SystemState
+    reasons: tuple[str, ...] = ()
+    acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
+    resolved_at: datetime | None = None
+
+
+@dataclass(slots=True)
+class IncidentRecord:
+    incident_id: str
+    opened_at: datetime
+    trigger_alarm_id: str
+    trigger_code: str
+    trigger_state: SystemState
+    start_event_sequence: int
+    lifecycle: IncidentLifecycle = IncidentLifecycle.OPEN
+    alarm_ids: tuple[str, ...] = ()
+    resolved_at: datetime | None = None
+    end_event_sequence: int | None = None
+
+
+@dataclass(slots=True)
 class RuntimeSnapshot:
     timestamp: datetime
     run_id: str
@@ -149,3 +179,5 @@ class RuntimeSnapshot:
     commands: dict[str, ArbitratedCommand]
     feedback: dict[str, DeviceFeedback]
     verification: list[VerificationTask]
+    alarms: tuple[AlarmRecord, ...] = ()
+    incidents: tuple[IncidentRecord, ...] = ()
