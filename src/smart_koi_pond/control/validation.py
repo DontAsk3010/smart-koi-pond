@@ -9,6 +9,10 @@ PLAUSIBILITY_BOUNDS: dict[str, tuple[float, float]] = {
     "ph": (0.0, 14.0),
     "water_level_pct": (0.0, 120.0),
     "circulation_flow_l_min": (0.0, 100_000.0),
+    "total_ammonia_nitrogen_mg_l": (0.0, 100.0),
+    "nitrite_mg_l": (0.0, 100.0),
+    "nitrate_mg_l": (0.0, 2_000.0),
+    "alkalinity_mg_l_as_caco3": (0.0, 2_000.0),
 }
 
 
@@ -84,7 +88,17 @@ def validate_all(samples: dict[str, SensorSample]) -> dict[str, ValidatedMeasure
 class SensorValidationEngine:
     """Stateful production-style validation using only observable samples."""
 
-    PRIMARY_SENSORS = ("temperature", "do", "ph", "water_level", "flow")
+    PRIMARY_SENSORS = (
+        "temperature",
+        "do",
+        "ph",
+        "water_level",
+        "flow",
+        "tan",
+        "nitrite",
+        "nitrate",
+        "alkalinity",
+    )
     REFERENCE_SOURCES = {"do": "do_reference"}
 
     def __init__(self, policy: SensorValidationPolicy | None = None) -> None:
