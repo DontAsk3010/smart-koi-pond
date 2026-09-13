@@ -122,12 +122,22 @@ class PondModel:
             }
         return self.biology.snapshot()
 
+    def _biological_truth_snapshot(self) -> dict[str, float | None]:
+        return {
+            "total_ammonia_nitrogen_mg_l": self.state.total_ammonia_nitrogen_mg_l,
+            "nitrite_mg_l": self.state.nitrite_mg_l,
+            "nitrate_mg_l": self.state.nitrate_mg_l,
+            "alkalinity_mg_l_as_caco3": self.state.alkalinity_mg_l_as_caco3,
+            "waste_solids_g": self.state.waste_solids_g,
+        }
+
     def checkpoint_state(self) -> dict[str, Any]:
         return {
             "hydraulics": (
                 self.hydraulics.checkpoint_state() if self.hydraulics is not None else None
             ),
             "biology": self.biology.checkpoint_state() if self.biology is not None else None,
+            "biological_truth": self._biological_truth_snapshot(),
         }
 
     def restore_engineering_state(self, state: Mapping[str, Any] | None) -> None:
@@ -147,6 +157,11 @@ class PondModel:
             if biology_state is not None
             else None
         )
+        for parameter, value in state.get("biological_truth", {}).items():
+            if value is not None:
+                self.set_truth(parameter, float(value))
+            elif hasattr(self.state, parameter):
+                setattr(self.state, parameter, None)
 
     @staticmethod
     def _effect(actuator_effects: dict[str, float | bool], asset_id: str) -> float:
