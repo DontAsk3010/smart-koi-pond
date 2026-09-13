@@ -58,6 +58,7 @@ class HybridSensorSuite:
         source: SensorSourceState,
         *,
         require_fresh_real_sample: bool = True,
+        not_before: datetime | None = None,
     ) -> None:
         if sensor_id not in self.PARAMETER_MAP:
             raise KeyError(sensor_id)
@@ -65,8 +66,15 @@ class HybridSensorSuite:
         if source == SensorSourceState.REAL_SOURCE:
             if self.real.device_id_for(sensor_id) is None:
                 raise RuntimeError(f"real sensor has no governed device binding: {sensor_id}")
-            if require_fresh_real_sample and not self.real.has_sample(sensor_id):
-                raise RuntimeError(f"fresh real sample required before source switch: {sensor_id}")
+            if require_fresh_real_sample:
+                if not self.real.has_sample(sensor_id):
+                    raise RuntimeError(
+                        f"fresh real sample required before source switch: {sensor_id}"
+                    )
+                if not_before is not None and not self.real.sample_is_fresh(sensor_id, not_before):
+                    raise RuntimeError(
+                        f"real sample predates reconciliation boundary: {sensor_id}"
+                    )
         self._sources[sensor_id] = source
 
     def sample(self, state: PondState, timestamp: datetime) -> dict[str, SensorSample]:
