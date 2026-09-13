@@ -63,6 +63,15 @@ class VerificationManager:
             completed.append(task)
         return completed
 
+    def abort_pending(self) -> list[VerificationTask]:
+        aborted: list[VerificationTask] = []
+        for task in self.tasks:
+            if task.status != VerificationStatus.PENDING:
+                continue
+            task.status = VerificationStatus.ABORTED_BY_MODE_CHANGE
+            aborted.append(task)
+        return aborted
+
     def restore(self, tasks: Iterable[VerificationTask]) -> None:
         self.tasks = list(tasks)
         counters: list[int] = []

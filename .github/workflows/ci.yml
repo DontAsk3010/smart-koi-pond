@@ -57,6 +57,11 @@ jobs:
           python -m smart_koi_pond.scenarios.sil_stress_matrix
           --output artifacts/simulation-exit-sil-${{ matrix.python-version }}.json
 
+      - name: Build G0 HIL-entry software evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.hil_entry_software_matrix
+          --output artifacts/g0-hil-entry-software-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -80,3 +85,9 @@ jobs:
         with:
           name: simulation-exit-sil-python-${{ matrix.python-version }}
           path: artifacts/simulation-exit-sil-${{ matrix.python-version }}.json
+
+      - name: Upload G0 HIL-entry software evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: g0-hil-entry-software-python-${{ matrix.python-version }}
+          path: artifacts/g0-hil-entry-software-${{ matrix.python-version }}.json

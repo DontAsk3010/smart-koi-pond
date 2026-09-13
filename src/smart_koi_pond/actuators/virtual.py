@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
-from smart_koi_pond.domain.enums import AvailabilityState, CommandOwner
+from smart_koi_pond.domain.enums import (
+    ActuatorSourceState,
+    AvailabilityState,
+    CommandOwner,
+    ControlAuthorityState,
+)
 from smart_koi_pond.domain.models import ArbitratedCommand, DeviceFeedback
 
 
@@ -15,6 +21,7 @@ class VirtualAsset:
 
 
 class VirtualActuatorBank:
+    ADAPTER_ID = "virtual-actuator-bank"
     DEFAULT_ASSETS = (
         "main_pump",
         "backup_pump",
@@ -29,6 +36,25 @@ class VirtualActuatorBank:
 
     def __init__(self) -> None:
         self.assets = {asset_id: VirtualAsset(asset_id) for asset_id in self.DEFAULT_ASSETS}
+
+    @property
+    def adapter_id(self) -> str:
+        return self.ADAPTER_ID
+
+    def source_for(self, asset_id: str) -> ActuatorSourceState:
+        if asset_id not in self.assets:
+            raise KeyError(asset_id)
+        return ActuatorSourceState.VIRTUAL_ACTUATOR
+
+    def authority_for(self, asset_id: str) -> ControlAuthorityState:
+        if asset_id not in self.assets:
+            raise KeyError(asset_id)
+        return ControlAuthorityState.AUTHORIZED
+
+    def device_id_for(self, asset_id: str) -> str | None:
+        if asset_id not in self.assets:
+            raise KeyError(asset_id)
+        return None
 
     def set_availability(self, asset_id: str, availability: AvailabilityState) -> None:
         asset = self.assets[asset_id]
@@ -64,4 +90,31 @@ class VirtualActuatorBank:
             availability=asset.availability,
             timestamp=timestamp,
             effectiveness=asset.effectiveness,
+            source_state=ActuatorSourceState.VIRTUAL_ACTUATOR,
+            authority_state=ControlAuthorityState.AUTHORIZED,
+            adapter_id=self.ADAPTER_ID,
         )
+
+    def checkpoint_state(self) -> dict[str, Any]:
+        return {
+            "assets": {
+                asset_id: {
+                    "owner": asset.owner.value,
+                    "availability": asset.availability.value,
+                    "feedback_on": asset.feedback_on,
+                    "effectiveness": asset.effectiveness,
+                }
+                for asset_id, asset in self.assets.items()
+            }
+        }
+
+    def restore_state(self, state: dict[str, Any] | None) -> None:
+        if not state:
+            return
+        for asset_id, saved in state.get("assets", {}).items():
+            if asset_id not in self.assets:
+                continue
+            self.set_availability(asset_id, AvailabilityState(saved["availability"]))
+            self.set_owner(asset_id, CommandOwner(saved["owner"]))
+            self.set_effectiveness(asset_id, float(saved.get("effectiveness", 1.0)))
+            self.assets[asset_id].feedback_on = False

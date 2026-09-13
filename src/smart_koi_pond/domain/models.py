@@ -3,10 +3,12 @@ from datetime import datetime
 from typing import Any
 
 from .enums import (
+    ActuatorSourceState,
     AlarmLifecycle,
     AvailabilityState,
     BaselineStatus,
     CommandOwner,
+    ControlAuthorityState,
     DataQuality,
     EventType,
     ExecutionMode,
@@ -14,7 +16,9 @@ from .enums import (
     ModuleInstallationState,
     ModuleOperationalState,
     OperatingMode,
+    SensorSourceState,
     SystemState,
+    ValidationPhase,
     VerificationStatus,
     WorkflowPhase,
 )
@@ -36,6 +40,11 @@ class SensorSample:
     value: float | None
     timestamp: datetime
     availability: AvailabilityState = AvailabilityState.AVAILABLE
+    source_state: SensorSourceState = SensorSourceState.VIRTUAL_SOURCE
+    adapter_id: str = "virtual-sensor-suite"
+    device_id: str | None = None
+    unit: str | None = None
+    schema_version: int = 1
 
 
 @dataclass(slots=True, frozen=True)
@@ -47,6 +56,11 @@ class ValidatedMeasurement:
     availability: AvailabilityState
     quality: DataQuality
     reasons: tuple[str, ...] = ()
+    source_state: SensorSourceState = SensorSourceState.VIRTUAL_SOURCE
+    adapter_id: str = "virtual-sensor-suite"
+    device_id: str | None = None
+    unit: str | None = None
+    schema_version: int = 1
 
 
 @dataclass(slots=True, frozen=True)
@@ -88,6 +102,11 @@ class DeviceFeedback:
     availability: AvailabilityState
     timestamp: datetime
     effectiveness: float = 1.0
+    source_state: ActuatorSourceState = ActuatorSourceState.VIRTUAL_ACTUATOR
+    authority_state: ControlAuthorityState = ControlAuthorityState.AUTHORIZED
+    adapter_id: str = "virtual-actuator-bank"
+    device_id: str | None = None
+    schema_version: int = 1
 
 
 @dataclass(slots=True)
@@ -172,6 +191,11 @@ class AssetStatus:
     availability: AvailabilityState
     feedback_on: bool
     effectiveness: float = 1.0
+    source_state: ActuatorSourceState = ActuatorSourceState.VIRTUAL_ACTUATOR
+    authority_state: ControlAuthorityState = ControlAuthorityState.AUTHORIZED
+    adapter_id: str = "virtual-actuator-bank"
+    device_id: str | None = None
+    schema_version: int = 1
 
 
 @dataclass(slots=True)
@@ -222,6 +246,8 @@ class RuntimeSnapshot:
     commands: dict[str, ArbitratedCommand]
     feedback: dict[str, DeviceFeedback]
     verification: list[VerificationTask]
+    validation_phase: ValidationPhase = ValidationPhase.SIMULATION
+    io_contract_version: int = 1
     alarms: tuple[AlarmRecord, ...] = ()
     incidents: tuple[IncidentRecord, ...] = ()
     water_recovery: dict[str, Any] = field(default_factory=dict)

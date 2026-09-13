@@ -17,6 +17,32 @@ class ExecutionMode(StrEnum):
     FULL_LIVE = "FULL_LIVE"
 
 
+class ValidationPhase(StrEnum):
+    SIMULATION = "SIMULATION"
+    SIL = "SIL"
+    HIL = "HIL"
+    BENCH = "BENCH"
+    SHADOW = "SHADOW"
+    PILOT = "PILOT"
+    LIVE = "LIVE"
+
+
+class SensorSourceState(StrEnum):
+    VIRTUAL_SOURCE = "VIRTUAL_SOURCE"
+    REAL_SOURCE = "REAL_SOURCE"
+
+
+class ActuatorSourceState(StrEnum):
+    VIRTUAL_ACTUATOR = "VIRTUAL_ACTUATOR"
+    REAL_ACTUATOR = "REAL_ACTUATOR"
+
+
+class ControlAuthorityState(StrEnum):
+    READ_ONLY = "READ_ONLY"
+    COMMAND_INHIBITED = "COMMAND_INHIBITED"
+    AUTHORIZED = "AUTHORIZED"
+
+
 class OperatingMode(StrEnum):
     NORMAL_AUTO = "NORMAL_AUTO"
     MANUAL_MAINTENANCE = "MANUAL_MAINTENANCE"

@@ -7,16 +7,17 @@ from typing import TYPE_CHECKING, Any
 
 from smart_koi_pond.control.operating_modes import _AssetRestoreState, _OperatingSession
 from smart_koi_pond.domain.enums import (
+    ActuatorSourceState,
     AvailabilityState,
     CommandOwner,
     EventType,
     ExecutionMode,
     OperatingMode,
+    ValidationPhase,
     VerificationStatus,
     WorkflowPhase,
 )
 from smart_koi_pond.domain.models import EventRecord, VerificationTask
-from smart_koi_pond.sensors.virtual import SensorFault
 
 if TYPE_CHECKING:
     from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
@@ -61,13 +62,40 @@ def _capture_mode_session(runtime: "DigitalTwinRuntime") -> dict[str, Any] | Non
     }
 
 
-def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
+def _legacy_virtual_sensor_fields(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
+    faults = getattr(runtime.sensors, "_faults", None)
+    stuck = getattr(runtime.sensors, "_stuck_values", None)
+    if faults is None or stuck is None:
+        return {}
     return {
+        "sensor_availability": {
+            sensor_id: (
+                runtime.sensors.availability_override(sensor_id).value
+                if runtime.sensors.availability_override(sensor_id) is not None
+                else None
+            )
+            for sensor_id in runtime.sensors.PARAMETER_MAP
+        },
+        "sensor_faults": {
+            sensor_id: {"mode": fault.mode, "value": fault.value}
+            for sensor_id, fault in faults.items()
+        },
+        "sensor_stuck_values": dict(stuck),
+    }
+
+
+def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
+    checkpoint = {
         "schema_version": CHECKPOINT_SCHEMA_VERSION,
         "run_id": runtime.run_id,
         "config_version": runtime.config_version,
         "saved_at": runtime.clock.current.isoformat(),
         "execution_mode": runtime.execution_mode.value,
+        "validation_phase": runtime.validation_phase.value,
+        "sensor_adapter_id": runtime.sensors.adapter_id,
+        "actuator_adapter_id": runtime.actuators.adapter_id,
+        "sensor_adapter_state": _jsonable(runtime.sensors.checkpoint_state()),
+        "actuator_adapter_state": _jsonable(runtime.actuators.checkpoint_state()),
         "clock": {
             "current": runtime.clock.current.isoformat(),
             "acceleration": runtime.clock.acceleration,
@@ -86,22 +114,12 @@ def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
                 "availability": asset.availability.value,
                 "feedback_on": asset.feedback_on,
                 "effectiveness": asset.effectiveness,
+                "source_state": runtime.actuators.source_for(asset_id).value,
+                "authority_state": runtime.actuators.authority_for(asset_id).value,
+                "device_id": runtime.actuators.device_id_for(asset_id),
             }
             for asset_id, asset in runtime.actuators.assets.items()
         },
-        "sensor_availability": {
-            sensor_id: (
-                runtime.sensors.availability_override(sensor_id).value
-                if runtime.sensors.availability_override(sensor_id) is not None
-                else None
-            )
-            for sensor_id in runtime.sensors.PARAMETER_MAP
-        },
-        "sensor_faults": {
-            sensor_id: {"mode": fault.mode, "value": fault.value}
-            for sensor_id, fault in runtime.sensors._faults.items()
-        },
-        "sensor_stuck_values": dict(runtime.sensors._stuck_values),
         "operating_mode": runtime.modes.mode.value,
         "operating_phase": runtime.modes.phase.value,
         "operating_session": _capture_mode_session(runtime),
@@ -129,6 +147,8 @@ def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
             for event in runtime.events.events
         ],
     }
+    checkpoint.update(_legacy_virtual_sensor_fields(runtime))
+    return checkpoint
 
 
 def _restore_event_log(runtime: "DigitalTwinRuntime", data: dict[str, Any]) -> None:
@@ -199,6 +219,35 @@ def _restore_session(data: dict[str, Any] | None) -> _OperatingSession | None:
     )
 
 
+def _safe_restart_availability(
+    runtime: "DigitalTwinRuntime",
+    asset_id: str,
+    requested: AvailabilityState,
+) -> AvailabilityState:
+    source = ActuatorSourceState(runtime.actuators.source_for(asset_id))
+    if source == ActuatorSourceState.REAL_ACTUATOR:
+        return AvailabilityState.UNKNOWN
+    return requested
+
+
+def _safe_session_restore(
+    runtime: "DigitalTwinRuntime",
+    session: _OperatingSession,
+) -> _OperatingSession:
+    session.asset_restore = {
+        asset_id: _AssetRestoreState(
+            owner=state.owner,
+            availability=_safe_restart_availability(
+                runtime,
+                asset_id,
+                state.availability,
+            ),
+        )
+        for asset_id, state in session.asset_restore.items()
+    }
+    return session
+
+
 def _enter_restart_gate(
     runtime: "DigitalTwinRuntime",
     saved_session: _OperatingSession | None,
@@ -209,7 +258,11 @@ def _enter_restart_gate(
         restore = {
             asset_id: _AssetRestoreState(
                 owner=CommandOwner(state["owner"]),
-                availability=AvailabilityState(state["availability"]),
+                availability=_safe_restart_availability(
+                    runtime,
+                    asset_id,
+                    AvailabilityState(state["availability"]),
+                ),
             )
             for asset_id, state in saved_assets.items()
         }
@@ -233,6 +286,7 @@ def _enter_restart_gate(
         )
         return
 
+    saved_session = _safe_session_restore(runtime, saved_session)
     if saved_session.origin_mode == OperatingMode.BLACKOUT_RECOVERY:
         for asset_id, state in saved_session.asset_restore.items():
             runtime.actuators.set_availability(asset_id, state.availability)
@@ -253,6 +307,45 @@ def _enter_restart_gate(
     runtime.modes._session = saved_session
 
 
+def _legacy_sensor_state(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "availability": {
+            sensor_id: availability
+            for sensor_id, availability in checkpoint.get("sensor_availability", {}).items()
+            if availability is not None
+        },
+        "faults": dict(checkpoint.get("sensor_faults", {})),
+        "stuck_values": dict(checkpoint.get("sensor_stuck_values", {})),
+    }
+
+
+def _restore_adapter_state(
+    runtime: "DigitalTwinRuntime",
+    checkpoint: dict[str, Any],
+) -> None:
+    saved_sensor_adapter = checkpoint.get("sensor_adapter_id")
+    saved_actuator_adapter = checkpoint.get("actuator_adapter_id")
+    if saved_sensor_adapter is not None and saved_sensor_adapter != runtime.sensors.adapter_id:
+        raise ValueError(
+            "checkpoint sensor adapter identity does not match runtime: "
+            f"{saved_sensor_adapter} != {runtime.sensors.adapter_id}"
+        )
+    if (
+        saved_actuator_adapter is not None
+        and saved_actuator_adapter != runtime.actuators.adapter_id
+    ):
+        raise ValueError(
+            "checkpoint actuator adapter identity does not match runtime: "
+            f"{saved_actuator_adapter} != {runtime.actuators.adapter_id}"
+        )
+
+    sensor_state = checkpoint.get("sensor_adapter_state")
+    if sensor_state is None and hasattr(runtime.sensors, "_faults"):
+        sensor_state = _legacy_sensor_state(checkpoint)
+    runtime.sensors.restore_state(sensor_state)
+    runtime.actuators.restore_state(checkpoint.get("actuator_adapter_state"))
+
+
 def restore_checkpoint(
     runtime: "DigitalTwinRuntime",
     checkpoint: dict[str, Any],
@@ -262,8 +355,12 @@ def restore_checkpoint(
     if checkpoint.get("config_version") != runtime.config_version:
         raise ValueError("checkpoint config_version does not match runtime config_version")
 
+    _restore_adapter_state(runtime, checkpoint)
     runtime.run_id = str(checkpoint["run_id"])
     runtime.execution_mode = ExecutionMode(checkpoint["execution_mode"])
+    runtime.validation_phase = ValidationPhase(
+        checkpoint.get("validation_phase", ValidationPhase.SIMULATION.value)
+    )
 
     clock = checkpoint["clock"]
     runtime.clock.current = datetime.fromisoformat(clock["current"])
@@ -277,27 +374,15 @@ def restore_checkpoint(
     runtime.model.state.water_level_pct = float(truth["water_level_pct"])
     runtime.model.state.circulation_flow_l_min = float(truth["circulation_flow_l_min"])
 
-    for sensor_id in runtime.sensors.PARAMETER_MAP:
-        runtime.sensors.set_availability(sensor_id, None)
-        runtime.sensors.set_fault(sensor_id, None)
-    for sensor_id, availability in checkpoint.get("sensor_availability", {}).items():
-        runtime.sensors.set_availability(
-            sensor_id,
-            AvailabilityState(availability) if availability is not None else None,
-        )
-    for sensor_id, fault in checkpoint.get("sensor_faults", {}).items():
-        runtime.sensors.set_fault(
-            sensor_id,
-            SensorFault(str(fault["mode"]), fault.get("value")),
-        )
-    runtime.sensors._stuck_values = {
-        sensor_id: float(value)
-        for sensor_id, value in checkpoint.get("sensor_stuck_values", {}).items()
-    }
-
     saved_assets = checkpoint["assets"]
     for asset_id, state in saved_assets.items():
-        runtime.actuators.set_availability(asset_id, AvailabilityState(state["availability"]))
+        if asset_id not in runtime.actuators.assets:
+            continue
+        requested = AvailabilityState(state["availability"])
+        runtime.actuators.set_availability(
+            asset_id,
+            _safe_restart_availability(runtime, asset_id, requested),
+        )
         runtime.actuators.set_owner(asset_id, CommandOwner(state["owner"]))
         runtime.actuators.set_effectiveness(asset_id, float(state.get("effectiveness", 1.0)))
         runtime.actuators.assets[asset_id].feedback_on = False
@@ -315,7 +400,13 @@ def restore_checkpoint(
         {
             "saved_operating_mode": checkpoint.get("operating_mode"),
             "restored_operating_mode": runtime.modes.mode,
+            "execution_mode": runtime.execution_mode,
+            "validation_phase": runtime.validation_phase,
+            "sensor_adapter_id": runtime.sensors.adapter_id,
+            "actuator_adapter_id": runtime.actuators.adapter_id,
             "stale_command_replay": False,
+            "stale_real_sample_replay": False,
+            "stale_real_feedback_replay": False,
         },
     )
 
