@@ -110,7 +110,7 @@ def decide(
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
 
-    if do_value is not None and classification.state in {SystemState.WATCH, SystemState.EMERGENCY}:
+    if do_value is not None and do_value <= policy.do_watch_below:
         intents.append(
             CommandIntent("backup_aerator", True, CommandOwner.AUTO, "LOW_DO_CORRECTION")
         )
