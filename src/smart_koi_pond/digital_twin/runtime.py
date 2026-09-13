@@ -10,7 +10,7 @@ from smart_koi_pond.control.engine import (
     estimate_state,
 )
 from smart_koi_pond.control.operating_modes import OperatingModeManager, assess_capability
-from smart_koi_pond.control.validation import validate_all
+from smart_koi_pond.control.validation import SensorValidationEngine
 from smart_koi_pond.control.verification import VerificationManager
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import PondModel
@@ -59,6 +59,7 @@ class DigitalTwinRuntime:
         self.config_version = config_version
         self.execution_mode = ExecutionMode.SIMULATION
         self.sensors = VirtualSensorSuite()
+        self.validation = SensorValidationEngine()
         self.actuators = VirtualActuatorBank()
         self.events = EventLog()
         self.verification = VerificationManager()
@@ -119,7 +120,20 @@ class DigitalTwinRuntime:
         self.model.step(simulated_seconds, self.actuators.process_effect_map())
 
         raw = self.sensors.sample(self.model.state, now)
-        validated = validate_all(raw)
+        validated = self.validation.validate(raw)
+        for logical_id, measurement in validated.items():
+            if measurement.reasons:
+                self.events.append(
+                    now,
+                    EventType.SENSOR_QUALITY,
+                    "SENSOR_VALIDATION_EVIDENCE",
+                    {
+                        "logical_id": logical_id,
+                        "source_sensor_id": measurement.sensor_id,
+                        "quality": measurement.quality,
+                        "reasons": measurement.reasons,
+                    },
+                )
         estimate = estimate_state(validated)
         classification = classify(estimate, self.policy)
 
@@ -254,6 +268,7 @@ class DigitalTwinRuntime:
 
     def restore_checkpoint(self, checkpoint) -> None:
         restore_runtime_checkpoint(self, checkpoint)
+        self.validation = SensorValidationEngine(self.validation.policy)
         self.alarm_incidents.restore_checkpoint_state(
             checkpoint.get("alarm_incident_state")
         )
