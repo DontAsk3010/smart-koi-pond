@@ -120,7 +120,8 @@ V1_REGRESSION_MATRIX: tuple[RegressionCase, ...] = (
     RegressionCase(
         "partial_actuator_degradation",
         GateStatus.HOLD,
-        "Virtual actuators currently expose binary feedback/availability, not partial effectiveness.",
+        "Virtual actuators currently expose binary feedback/availability, not partial "
+        "effectiveness.",
         "test_partial_actuator_degradation_gap_is_explicitly_held",
     ),
     RegressionCase(
