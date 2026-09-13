@@ -22,7 +22,10 @@ G0_HIL_ENTRY_SOFTWARE_MATRIX: tuple[G0Case, ...] = (
     G0Case(
         "g0_01_virtual_provenance_default",
         GateStatus.PASS,
-        "Default simulation publication exposes virtual sensor/actuator provenance and authority.",
+        (
+            "Default simulation publication exposes virtual sensor/actuator "
+            "provenance and authority."
+        ),
         "test_default_runtime_publishes_virtual_source_and_authority",
     ),
     G0Case(
@@ -34,13 +37,19 @@ G0_HIL_ENTRY_SOFTWARE_MATRIX: tuple[G0Case, ...] = (
     G0Case(
         "g0_03_real_sensor_identity_ordering",
         GateStatus.PASS,
-        "Real telemetry is bound to governed device identity and rejects mismatched or non-monotonic data.",
+        (
+            "Real telemetry is bound to governed device identity and rejects "
+            "mismatched or non-monotonic data."
+        ),
         "test_real_sensor_identity_order_and_duplicate_rules_are_fail_closed",
     ),
     G0Case(
         "g0_04_real_sensor_reconciliation_freshness",
         GateStatus.PASS,
-        "Virtual-to-real source transition requires governed binding and post-boundary fresh evidence.",
+        (
+            "Virtual-to-real source transition requires governed binding and "
+            "post-boundary fresh evidence."
+        ),
         "test_real_sensor_switch_requires_binding_and_reconciliation_fresh_sample",
     ),
     G0Case(
@@ -52,25 +61,37 @@ G0_HIL_ENTRY_SOFTWARE_MATRIX: tuple[G0Case, ...] = (
     G0Case(
         "g0_06_adapter_defense_in_depth",
         GateStatus.PASS,
-        "The real-actuator adapter independently rejects any active command that bypasses runtime authority gating.",
+        (
+            "The real-actuator adapter independently rejects any active command "
+            "that bypasses runtime authority gating."
+        ),
         "test_real_actuator_adapter_itself_rejects_active_commands",
     ),
     G0Case(
         "g0_07_transition_aborts_stale_verification",
         GateStatus.PASS,
-        "Source transition aborts pending verification and records auditable configuration evidence.",
+        (
+            "Source transition aborts pending verification and records auditable "
+            "configuration evidence."
+        ),
         "test_source_transition_aborts_pending_verification_and_is_audited",
     ),
     G0Case(
         "g0_08_restart_real_source_no_stale_observation",
         GateStatus.PASS,
-        "Restart preserves real identity/source configuration without replaying cached physical observations.",
+        (
+            "Restart preserves real identity/source configuration without replaying "
+            "cached physical observations."
+        ),
         "test_real_source_checkpoint_restores_identity_but_not_cached_observation",
     ),
     G0Case(
         "g0_09_checkpoint_adapter_identity",
         GateStatus.PASS,
-        "Checkpoint restore rejects adapter-identity mismatch instead of silently remapping I/O lineage.",
+        (
+            "Checkpoint restore rejects adapter-identity mismatch instead of "
+            "silently remapping I/O lineage."
+        ),
         "test_checkpoint_rejects_adapter_identity_mismatch",
     ),
 )
