@@ -56,6 +56,12 @@ class BufferedRealSensorSuite:
             raise KeyError(sensor_id)
         return sensor_id in self._samples
 
+    def sample_is_fresh(self, sensor_id: str, not_before: datetime) -> bool:
+        if sensor_id not in self.PARAMETER_MAP:
+            raise KeyError(sensor_id)
+        sample = self._samples.get(sensor_id)
+        return sample is not None and sample.timestamp >= not_before
+
     def bind_device(self, sensor_id: str, device_id: str) -> None:
         if sensor_id not in self.PARAMETER_MAP:
             raise KeyError(sensor_id)
