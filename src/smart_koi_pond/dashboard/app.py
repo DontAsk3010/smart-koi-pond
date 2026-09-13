@@ -27,6 +27,8 @@ def build_simulation_runtime(
         water_level_low_below=70.0,
         verification_delay_seconds=120.0,
         do_verification_min_delta=0.01,
+        temperature_watch_above=30.0,
+        temperature_emergency_above=32.0,
     )
     runtime = DigitalTwinRuntime(
         PondModel(

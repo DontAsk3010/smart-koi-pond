@@ -105,10 +105,10 @@ V1_REGRESSION_MATRIX: tuple[RegressionCase, ...] = (
     ),
     RegressionCase(
         "heat_wave_safety_classification",
-        GateStatus.HOLD,
-        "Temperature evolves in the model, but V1 classification has no governed temperature "
-        "safety rule/corrective path yet.",
-        "test_heat_wave_gap_is_explicitly_held",
+        GateStatus.PASS,
+        "Simulation-policy temperature limits classify heat-wave risk and inhibit feeding at the "
+        "emergency tier without claiming a physical cooling actuator.",
+        "test_heat_wave_is_classified_and_feeding_is_inhibited",
     ),
     RegressionCase(
         "sensor_stuck_drift_discrimination",
