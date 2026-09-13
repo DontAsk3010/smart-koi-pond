@@ -21,6 +21,10 @@ class VirtualSensorSuite:
         "ph": "ph",
         "water_level": "water_level_pct",
         "flow": "circulation_flow_l_min",
+        "tan": "total_ammonia_nitrogen_mg_l",
+        "nitrite": "nitrite_mg_l",
+        "nitrate": "nitrate_mg_l",
+        "alkalinity": "alkalinity_mg_l_as_caco3",
     }
     UNIT_MAP = {
         "temperature": "degC",
@@ -29,6 +33,10 @@ class VirtualSensorSuite:
         "ph": "pH",
         "water_level": "%",
         "flow": "L/min",
+        "tan": "mg/L",
+        "nitrite": "mg/L",
+        "nitrate": "mg/L",
+        "alkalinity": "mg/L as CaCO3",
     }
 
     def __init__(self) -> None:
@@ -81,11 +89,16 @@ class VirtualSensorSuite:
     def sample(self, state: PondState, timestamp: datetime) -> dict[str, SensorSample]:
         samples: dict[str, SensorSample] = {}
         for sensor_id, attribute in self.PARAMETER_MAP.items():
-            truth = float(getattr(state, attribute))
+            raw_truth = getattr(state, attribute)
+            truth = float(raw_truth) if raw_truth is not None else None
             fault = self._faults.get(sensor_id)
             availability_override = self._availability_overrides.get(sensor_id)
             value: float | None = truth
-            availability = AvailabilityState.AVAILABLE
+            availability = (
+                AvailabilityState.AVAILABLE
+                if truth is not None
+                else AvailabilityState.UNAVAILABLE
+            )
 
             if availability_override is not None:
                 availability = availability_override
@@ -96,9 +109,17 @@ class VirtualSensorSuite:
                     value = None
                     availability = AvailabilityState.UNAVAILABLE
                 elif fault.mode == "stuck":
-                    value = self._stuck_values.setdefault(sensor_id, truth)
+                    if truth is None:
+                        value = None
+                        availability = AvailabilityState.UNAVAILABLE
+                    else:
+                        value = self._stuck_values.setdefault(sensor_id, truth)
                 elif fault.mode == "drift":
-                    value = truth + float(fault.value or 0.0)
+                    if truth is None:
+                        value = None
+                        availability = AvailabilityState.UNAVAILABLE
+                    else:
+                        value = truth + float(fault.value or 0.0)
                 else:
                     raise ValueError(f"unsupported sensor fault mode: {fault.mode}")
 
