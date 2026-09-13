@@ -264,6 +264,23 @@ class AlarmIncidentManager:
                     source_state=classification.state,
                 )
 
+    def _derive_low_water_lockout(self) -> tuple[str, str] | None:
+        for event in reversed(self.events.events):
+            if event.event_type != EventType.RECOVERY:
+                continue
+            if event.code == "LOW_WATER_RECOVERY_LOCKOUT_CLEARED":
+                return None
+            if event.code == "LOW_WATER_RECOVERY_ABORTED_ON_RESTART":
+                attempt_id = event.payload.get("attempt_id")
+                if attempt_id:
+                    return str(attempt_id), "RUNTIME_RESTART_ABORT"
+            if event.code == "LOW_WATER_RECOVERY_ABORTED":
+                attempt_id = event.payload.get("attempt_id")
+                reason = event.payload.get("reason")
+                if attempt_id and reason:
+                    return str(attempt_id), str(reason)
+        return None
+
     def _update_low_water_lockout_alarm(
         self,
         now: datetime,
@@ -271,6 +288,8 @@ class AlarmIncidentManager:
         recovery_lockout: tuple[str, str] | None,
         touched: set[str],
     ) -> None:
+        if recovery_lockout is None:
+            recovery_lockout = self._derive_low_water_lockout()
         if recovery_lockout is None:
             return
 
