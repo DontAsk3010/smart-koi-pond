@@ -31,6 +31,11 @@ class PondState:
     ph: float
     water_level_pct: float
     circulation_flow_l_min: float = 0.0
+    total_ammonia_nitrogen_mg_l: float | None = None
+    nitrite_mg_l: float | None = None
+    nitrate_mg_l: float | None = None
+    alkalinity_mg_l_as_caco3: float | None = None
+    waste_solids_g: float | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -253,3 +258,4 @@ class RuntimeSnapshot:
     water_recovery: dict[str, Any] = field(default_factory=dict)
     design_profile: dict[str, Any] = field(default_factory=dict)
     hydraulics: dict[str, Any] = field(default_factory=dict)
+    biology: dict[str, Any] = field(default_factory=dict)
