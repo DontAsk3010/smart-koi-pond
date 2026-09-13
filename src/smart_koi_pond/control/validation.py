@@ -4,7 +4,6 @@ from smart_koi_pond.domain.enums import (
 )
 from smart_koi_pond.domain.models import SensorSample, ValidatedMeasurement
 
-
 PLAUSIBILITY_BOUNDS: dict[str, tuple[float, float]] = {
     "temperature_c": (-5.0, 60.0),
     "dissolved_oxygen_mg_l": (0.0, 25.0),

@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
 from smart_koi_pond.digital_twin.clock import SimulationClock
@@ -13,7 +13,6 @@ from smart_koi_pond.domain.enums import (
 )
 from smart_koi_pond.domain.models import PondState
 from smart_koi_pond.sensors.virtual import SensorFault
-
 
 POLICY = SimulationControlPolicy(
     do_watch_below=5.0,

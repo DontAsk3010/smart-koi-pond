@@ -5,7 +5,6 @@ from smart_koi_pond.domain.enums import (
 )
 from smart_koi_pond.domain.models import ArbitratedCommand, CommandIntent
 
-
 BLOCKING_AVAILABILITY = {
     AvailabilityState.PLANNED_OFF,
     AvailabilityState.MAINTENANCE_UNAVAILABLE,
