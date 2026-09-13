@@ -112,7 +112,10 @@ class LowWaterRecoveryManager:
         if self.lockout_reason is None:
             return
         target = policy.water_level_recover_target
+        cutoff = policy.water_level_hard_high_cutoff
         if quality != DataQuality.GOOD or level is None or target is None or level < target:
+            return
+        if cutoff is not None and level >= cutoff:
             return
         previous_reason = self.lockout_reason
         previous_attempt = self.lockout_attempt_id
