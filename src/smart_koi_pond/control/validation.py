@@ -29,36 +29,50 @@ class SensorValidationPolicy:
             raise ValueError("persistence_samples must be at least 2")
 
 
+def _validated_from_sample(
+    sample: SensorSample,
+    *,
+    value: float | None,
+    quality: DataQuality,
+    reasons: tuple[str, ...] = (),
+) -> ValidatedMeasurement:
+    return ValidatedMeasurement(
+        sensor_id=sample.sensor_id,
+        parameter=sample.parameter,
+        value=value,
+        timestamp=sample.timestamp,
+        availability=sample.availability,
+        quality=quality,
+        reasons=reasons,
+        source_state=sample.source_state,
+        adapter_id=sample.adapter_id,
+        device_id=sample.device_id,
+        unit=sample.unit,
+        schema_version=sample.schema_version,
+    )
+
+
 def validate_sample(sample: SensorSample) -> ValidatedMeasurement:
     if sample.availability != AvailabilityState.AVAILABLE or sample.value is None:
-        return ValidatedMeasurement(
-            sensor_id=sample.sensor_id,
-            parameter=sample.parameter,
+        return _validated_from_sample(
+            sample,
             value=None,
-            timestamp=sample.timestamp,
-            availability=sample.availability,
             quality=DataQuality.INVALID,
             reasons=("REQUIRED_INPUT_MISSING",),
         )
 
     lower, upper = PLAUSIBILITY_BOUNDS[sample.parameter]
     if not lower <= sample.value <= upper:
-        return ValidatedMeasurement(
-            sensor_id=sample.sensor_id,
-            parameter=sample.parameter,
+        return _validated_from_sample(
+            sample,
             value=None,
-            timestamp=sample.timestamp,
-            availability=sample.availability,
             quality=DataQuality.INVALID,
             reasons=("OUT_OF_PLAUSIBLE_RANGE",),
         )
 
-    return ValidatedMeasurement(
-        sensor_id=sample.sensor_id,
-        parameter=sample.parameter,
+    return _validated_from_sample(
+        sample,
         value=sample.value,
-        timestamp=sample.timestamp,
-        availability=sample.availability,
         quality=DataQuality.GOOD,
     )
 
@@ -108,6 +122,11 @@ class SensorValidationEngine:
             availability=measurement.availability,
             quality=quality,
             reasons=reasons,
+            source_state=measurement.source_state,
+            adapter_id=measurement.adapter_id,
+            device_id=measurement.device_id,
+            unit=measurement.unit,
+            schema_version=measurement.schema_version,
         )
 
     @staticmethod
@@ -123,6 +142,11 @@ class SensorValidationEngine:
             availability=reference.availability,
             quality=reference.quality,
             reasons=("FALLBACK_REFERENCE", f"PRIMARY_REJECTED:{primary_reason}"),
+            source_state=reference.source_state,
+            adapter_id=reference.adapter_id,
+            device_id=reference.device_id,
+            unit=reference.unit,
+            schema_version=reference.schema_version,
         )
 
     def validate(
