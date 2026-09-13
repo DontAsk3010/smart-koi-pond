@@ -62,6 +62,11 @@ jobs:
           python -m smart_koi_pond.scenarios.hil_entry_software_matrix
           --output artifacts/g0-hil-entry-software-${{ matrix.python-version }}.json
 
+      - name: Build virtual fault/recovery evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.virtual_fault_recovery_matrix
+          --output artifacts/virtual-fault-recovery-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -91,3 +96,9 @@ jobs:
         with:
           name: g0-hil-entry-software-python-${{ matrix.python-version }}
           path: artifacts/g0-hil-entry-software-${{ matrix.python-version }}.json
+
+      - name: Upload virtual fault/recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: virtual-fault-recovery-python-${{ matrix.python-version }}
+          path: artifacts/virtual-fault-recovery-${{ matrix.python-version }}.json
