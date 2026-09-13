@@ -21,6 +21,18 @@ class SimulationControlPolicy:
     verification_delay_seconds: float = 120.0
     do_verification_min_delta: float = 0.01
     flow_verification_min_delta: float = 0.5
+    temperature_watch_above: float | None = None
+    temperature_emergency_above: float | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.temperature_watch_above is not None
+            and self.temperature_emergency_above is not None
+            and self.temperature_emergency_above <= self.temperature_watch_above
+        ):
+            raise ValueError(
+                "temperature_emergency_above must be greater than temperature_watch_above"
+            )
 
 
 def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
@@ -34,6 +46,7 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
     level = estimate.values.get("water_level_pct")
+    temperature = estimate.values.get("temperature_c")
     reasons: list[str] = []
 
     if estimate.quality.get("dissolved_oxygen_mg_l") != DataQuality.GOOD:
@@ -46,6 +59,31 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     elif do_value is not None and do_value <= policy.do_watch_below:
         state = SystemState.WATCH
         reasons.append("DO_LOW")
+
+    temperature_policy_active = (
+        policy.temperature_watch_above is not None
+        or policy.temperature_emergency_above is not None
+    )
+    if temperature_policy_active:
+        if estimate.quality.get("temperature_c") != DataQuality.GOOD:
+            if state == SystemState.NORMAL:
+                state = SystemState.DEGRADED
+            reasons.append("REQUIRED_INPUT_MISSING:TEMPERATURE")
+        elif (
+            temperature is not None
+            and policy.temperature_emergency_above is not None
+            and temperature >= policy.temperature_emergency_above
+        ):
+            state = SystemState.EMERGENCY
+            reasons.append("TEMPERATURE_EMERGENCY")
+        elif (
+            temperature is not None
+            and policy.temperature_watch_above is not None
+            and temperature >= policy.temperature_watch_above
+        ):
+            if state == SystemState.NORMAL:
+                state = SystemState.WATCH
+            reasons.append("TEMPERATURE_HIGH")
 
     if estimate.quality.get("circulation_flow_l_min") != DataQuality.GOOD:
         state = SystemState.DEGRADED if state == SystemState.NORMAL else state
