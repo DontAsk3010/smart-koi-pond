@@ -20,7 +20,10 @@ class VirtualActuatorBank:
         "primary_aerator",
         "backup_aerator",
         "top_up_valve",
+        "drain_valve",
+        "backwash_valve",
         "feeder",
+        "uv_lamp",
     )
 
     def __init__(self) -> None:

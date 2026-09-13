@@ -11,6 +11,7 @@ from .enums import (
     OperatingMode,
     SystemState,
     VerificationStatus,
+    WorkflowPhase,
 )
 
 
@@ -104,16 +105,34 @@ class EventRecord:
     payload: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True, frozen=True)
+class CapabilitySummary:
+    circulation_paths_available: int
+    aeration_paths_available: int
+    degraded_reasons: tuple[str, ...] = ()
+    critical_capability_lost: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class OperatingStatus:
+    mode: OperatingMode
+    phase: WorkflowPhase
+    reason: str | None
+    scope: tuple[str, ...] = ()
+
+
 @dataclass(slots=True)
 class RuntimeSnapshot:
     timestamp: datetime
     execution_mode: ExecutionMode
     operating_mode: OperatingMode
+    operating_status: OperatingStatus
     pond_truth: PondState
     raw_samples: dict[str, SensorSample]
     validated: dict[str, ValidatedMeasurement]
     estimate: StateEstimate
     classification: Classification
+    capability: CapabilitySummary
     commands: dict[str, ArbitratedCommand]
     feedback: dict[str, DeviceFeedback]
     verification: list[VerificationTask]

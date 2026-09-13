@@ -6,12 +6,24 @@ from smart_koi_pond.control.engine import (
     decide,
     estimate_state,
 )
+from smart_koi_pond.control.operating_modes import OperatingModeManager, assess_capability
 from smart_koi_pond.control.validation import validate_all
 from smart_koi_pond.control.verification import VerificationManager
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import PondModel
-from smart_koi_pond.domain.enums import EventType, ExecutionMode, OperatingMode, SystemState
-from smart_koi_pond.domain.models import RuntimeSnapshot
+from smart_koi_pond.domain.enums import (
+    CommandOwner,
+    EventType,
+    ExecutionMode,
+    OperatingMode,
+    SystemState,
+)
+from smart_koi_pond.domain.models import (
+    CapabilitySummary,
+    Classification,
+    CommandIntent,
+    RuntimeSnapshot,
+)
 from smart_koi_pond.events.log import EventLog
 from smart_koi_pond.sensors.virtual import VirtualSensorSuite
 
@@ -28,12 +40,55 @@ class DigitalTwinRuntime:
         self.policy = policy
         self.clock = clock or SimulationClock.start()
         self.execution_mode = ExecutionMode.SIMULATION
-        self.operating_mode = OperatingMode.NORMAL_AUTO
         self.sensors = VirtualSensorSuite()
         self.actuators = VirtualActuatorBank()
         self.events = EventLog()
         self.verification = VerificationManager()
+        self.modes = OperatingModeManager(self.actuators, self.sensors, self.events)
         self._last_feedback = self.actuators.feedback_map()
+
+    @property
+    def operating_mode(self) -> OperatingMode:
+        return self.modes.mode
+
+    def _apply_capability(
+        self,
+        classification: Classification,
+    ) -> tuple[Classification, CapabilitySummary]:
+        capability = assess_capability(self.actuators)
+        reasons = list(classification.reasons)
+        reasons.extend(
+            reason for reason in capability.degraded_reasons if reason not in reasons
+        )
+        state = classification.state
+        if capability.critical_capability_lost:
+            state = SystemState.FAILSAFE
+        elif capability.degraded_reasons and state == SystemState.NORMAL:
+            state = SystemState.DEGRADED
+        return Classification(state, tuple(reasons)), capability
+
+    def _execute_intent(self, intent: CommandIntent, now):
+        asset = self.actuators.assets[intent.asset_id]
+        command = arbitrate(
+            intent,
+            asset.availability,
+            asset.owner,
+            self.operating_mode,
+        )
+        device_feedback = self.actuators.execute(command, now)
+        self.events.append(
+            now,
+            EventType.COMMAND,
+            "COMMAND_ARBITRATED",
+            {
+                "asset_id": command.asset_id,
+                "owner": command.owner,
+                "accepted": command.accepted,
+                "final_on": command.final_on,
+                "reason": command.reason,
+            },
+        )
+        return command, device_feedback
 
     def tick(self, seconds: float) -> RuntimeSnapshot:
         self.clock.advance(seconds)
@@ -44,6 +99,9 @@ class DigitalTwinRuntime:
         validated = validate_all(raw)
         estimate = estimate_state(validated)
         classification = classify(estimate, self.policy)
+
+        self.modes.advance_phase(now, validated)
+        classification, capability = self._apply_capability(classification)
 
         completed = self.verification.evaluate(now, estimate.values)
         for task in completed:
@@ -62,31 +120,22 @@ class DigitalTwinRuntime:
 
         commands = {}
         feedback = {}
-        for intent in decide(estimate, classification, self.policy):
-            asset = self.actuators.assets[intent.asset_id]
-            command = arbitrate(
-                intent,
-                asset.availability,
-                asset.owner,
-                self.operating_mode,
-            )
+        auto_intents = decide(estimate, classification, self.policy)
+        workflow_intents = self.modes.command_intents()
+
+        for intent in [*auto_intents, *workflow_intents]:
+            command, device_feedback = self._execute_intent(intent, now)
             commands[intent.asset_id] = command
-            device_feedback = self.actuators.execute(command, now)
             feedback[intent.asset_id] = device_feedback
-            self.events.append(
-                now,
-                EventType.COMMAND,
-                "COMMAND_ARBITRATED",
-                {
-                    "asset_id": command.asset_id,
-                    "accepted": command.accepted,
-                    "final_on": command.final_on,
-                    "reason": command.reason,
-                },
-            )
 
             prior = self._last_feedback.get(intent.asset_id, False)
-            if command.accepted and command.final_on and not prior and device_feedback.feedback_on:
+            if (
+                command.owner == CommandOwner.AUTO
+                and command.accepted
+                and command.final_on
+                and not prior
+                and device_feedback.feedback_on
+            ):
                 task = self.verification.start_for_asset(
                     intent.asset_id,
                     now,
@@ -107,28 +156,110 @@ class DigitalTwinRuntime:
 
         self._last_feedback = self.actuators.feedback_map()
 
+        if self.modes.complete_recovery_if_ready(now, validated):
+            classification, capability = self._apply_capability(classification)
+
         if classification.state in {SystemState.WATCH, SystemState.EMERGENCY} and any(
-            command.accepted and command.final_on for command in commands.values()
+            command.owner == CommandOwner.AUTO
+            and command.accepted
+            and command.final_on
+            for command in commands.values()
         ):
-            classification = type(classification)(SystemState.CORRECTING, classification.reasons)
+            classification = Classification(
+                SystemState.CORRECTING,
+                classification.reasons,
+            )
 
         self.events.append(
             now,
             EventType.STATE,
             classification.state,
-            {"reasons": classification.reasons},
+            {
+                "reasons": classification.reasons,
+                "operating_mode": self.operating_mode,
+                "operating_phase": self.modes.phase,
+            },
         )
 
         return RuntimeSnapshot(
             timestamp=now,
             execution_mode=self.execution_mode,
             operating_mode=self.operating_mode,
+            operating_status=self.modes.status,
             pond_truth=self.model.state,
             raw_samples=raw,
             validated=validated,
             estimate=estimate,
             classification=classification,
+            capability=capability,
             commands=commands,
             feedback=feedback,
             verification=list(self.verification.tasks),
         )
+
+    def start_manual_maintenance(
+        self,
+        scope,
+        reason: str,
+        *,
+        service_locked=(),
+    ) -> None:
+        self.modes.start_manual_maintenance(
+            scope,
+            reason,
+            self.clock.current,
+            service_locked=service_locked,
+        )
+
+    def start_sensor_calibration(self, sensor_ids, reason: str) -> None:
+        self.modes.start_sensor_calibration(sensor_ids, reason, self.clock.current)
+
+    def start_partial_shutdown(self, asset_ids, reason: str) -> None:
+        self.modes.start_partial_shutdown(asset_ids, reason, self.clock.current)
+
+    def start_safe_total_shutdown(
+        self,
+        reason: str,
+        *,
+        fish_present: bool = True,
+    ) -> None:
+        self.modes.start_safe_total_shutdown(
+            reason,
+            self.clock.current,
+            fish_present=fish_present,
+        )
+
+    def start_water_change(
+        self,
+        reason: str,
+        *,
+        target_drain_level_pct: float,
+        target_refill_level_pct: float,
+    ) -> None:
+        self.modes.start_water_change(
+            reason,
+            self.clock.current,
+            target_drain_level_pct=target_drain_level_pct,
+            target_refill_level_pct=target_refill_level_pct,
+        )
+
+    def start_filter_clean(self, service_scope, reason: str) -> None:
+        self.modes.start_filter_clean(service_scope, reason, self.clock.current)
+
+    def start_blackout(self, reason: str) -> None:
+        self.modes.start_blackout(reason, self.clock.current)
+
+    def restore_power(self) -> None:
+        self.modes.restore_power(self.clock.current)
+
+    def request_return_to_auto(self) -> None:
+        self.modes.request_return_to_auto(self.clock.current)
+
+    def manual_command(self, asset_id: str, on: bool, reason: str):
+        asset = self.actuators.assets[asset_id]
+        if asset.owner not in {CommandOwner.MANUAL, CommandOwner.MAINTENANCE}:
+            raise RuntimeError(f"asset is not under manual ownership: {asset_id}")
+        intent = CommandIntent(asset_id, on, asset.owner, reason)
+        command, feedback = self._execute_intent(intent, self.clock.current)
+        self._last_feedback = self.actuators.feedback_map()
+        return command, feedback

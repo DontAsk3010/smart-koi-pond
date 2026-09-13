@@ -23,6 +23,7 @@ class VirtualSensorSuite:
     def __init__(self) -> None:
         self._faults: dict[str, SensorFault] = {}
         self._stuck_values: dict[str, float] = {}
+        self._availability_overrides: dict[str, AvailabilityState] = {}
 
     def set_fault(self, sensor_id: str, fault: SensorFault | None) -> None:
         if fault is None:
@@ -31,15 +32,37 @@ class VirtualSensorSuite:
         else:
             self._faults[sensor_id] = fault
 
+    def set_availability(
+        self,
+        sensor_id: str,
+        availability: AvailabilityState | None,
+    ) -> None:
+        if sensor_id not in self.PARAMETER_MAP:
+            raise KeyError(sensor_id)
+        if availability is None or availability == AvailabilityState.AVAILABLE:
+            self._availability_overrides.pop(sensor_id, None)
+        else:
+            self._availability_overrides[sensor_id] = availability
+
+    def availability_override(self, sensor_id: str) -> AvailabilityState | None:
+        if sensor_id not in self.PARAMETER_MAP:
+            raise KeyError(sensor_id)
+        return self._availability_overrides.get(sensor_id)
+
     def sample(self, state: PondState, timestamp: datetime) -> dict[str, SensorSample]:
         samples: dict[str, SensorSample] = {}
         for sensor_id, attribute in self.PARAMETER_MAP.items():
             truth = float(getattr(state, attribute))
             fault = self._faults.get(sensor_id)
+            availability_override = self._availability_overrides.get(sensor_id)
             value: float | None = truth
             availability = AvailabilityState.AVAILABLE
 
-            if fault is not None:
+            if availability_override is not None:
+                availability = availability_override
+                if availability_override != AvailabilityState.AVAILABLE:
+                    value = None
+            elif fault is not None:
                 if fault.mode == "dropout":
                     value = None
                     availability = AvailabilityState.UNAVAILABLE

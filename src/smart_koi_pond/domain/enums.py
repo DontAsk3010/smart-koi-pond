@@ -30,6 +30,23 @@ class OperatingMode(StrEnum):
     HOLD = "HOLD"
 
 
+class WorkflowPhase(StrEnum):
+    IDLE = "IDLE"
+    ENTERING = "ENTERING"
+    ACTIVE = "ACTIVE"
+    DRAINING = "DRAINING"
+    REFILLING = "REFILLING"
+    BACKWASHING = "BACKWASHING"
+    CALIBRATING = "CALIBRATING"
+    SHUTDOWN = "SHUTDOWN"
+    BLACKOUT = "BLACKOUT"
+    RECOVERY_SYNC = "RECOVERY_SYNC"
+    VERIFYING = "VERIFYING"
+    COMPLETE = "COMPLETE"
+    ABORTED = "ABORTED"
+    HOLD = "HOLD"
+
+
 class AvailabilityState(StrEnum):
     AVAILABLE = "AVAILABLE"
     STANDBY = "STANDBY"
@@ -52,6 +69,7 @@ class DataQuality(StrEnum):
 
 class CommandOwner(StrEnum):
     AUTO = "AUTO"
+    WORKFLOW = "WORKFLOW"
     MANUAL = "MANUAL"
     MAINTENANCE = "MAINTENANCE"
     SHUTDOWN = "SHUTDOWN"
