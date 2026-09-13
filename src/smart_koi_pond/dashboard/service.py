@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+from smart_koi_pond.digital_twin.biology import BiologicalProcessProfile
 from smart_koi_pond.digital_twin.hydraulics import PondDesignProfile
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
@@ -39,7 +40,9 @@ _ACTION_LEVEL = {
     "cancel_scenario_trigger": 2,
     "configure_module": 2,
     "configure_design_profile": 2,
+    "configure_biological_profile": 2,
     "set_hydraulic_restriction": 2,
+    "set_environment_state": 2,
 }
 
 
@@ -75,17 +78,21 @@ class RuntimeApplicationService:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_snapshot = runtime.tick(0.0)
+        self._last_snapshot = self._enrich_biology(runtime.tick(0.0))
 
     @property
     def last_snapshot(self) -> RuntimeSnapshot:
         with self._lock:
             return self._last_snapshot
 
+    def _enrich_biology(self, snapshot: RuntimeSnapshot) -> RuntimeSnapshot:
+        snapshot.biology = self.runtime.model.biological_snapshot()
+        return snapshot
+
     def _tick_and_evaluate(self, seconds: float) -> RuntimeSnapshot:
-        snapshot = self.runtime.tick(seconds)
+        snapshot = self._enrich_biology(self.runtime.tick(seconds))
         if self.scenarios.evaluate(snapshot):
-            snapshot = self.runtime.tick(0.0)
+            snapshot = self._enrich_biology(self.runtime.tick(0.0))
         return snapshot
 
     def step(self, seconds: float | None = None) -> RuntimeSnapshot:
@@ -97,6 +104,7 @@ class RuntimeApplicationService:
 
     def publication(self, *, after_sequence: int = 0) -> dict[str, Any]:
         with self._lock:
+            self._last_snapshot.biology = self.runtime.model.biological_snapshot()
             publication = self.runtime.publish(
                 self._last_snapshot,
                 after_sequence=after_sequence,
@@ -104,7 +112,11 @@ class RuntimeApplicationService:
             publication["snapshot"]["process_visual"] = _wire(
                 project_process_visual(self._last_snapshot)
             )
+            publication["snapshot"]["biology"] = _wire(
+                self.runtime.model.biological_snapshot()
+            )
             publication["process_visual_schema_version"] = 1
+            publication["biology_schema_version"] = 1
             publication["scenario_triggers"] = _wire(self.scenarios.triggers)
             return publication
 
@@ -242,6 +254,11 @@ class RuntimeApplicationService:
                 )
             elif action == "clear_actuator_fault":
                 self.scenarios.clear_actuator_fault(str(data["asset_id"]))
+            elif action == "set_environment_state":
+                self.scenarios.set_environment_state(
+                    str(data["parameter"]),
+                    float(data["value"]),
+                )
             elif action == "safe_runtime_reset":
                 self.scenarios.safe_runtime_reset()
             elif action == "schedule_scenario_trigger":
@@ -255,7 +272,9 @@ class RuntimeApplicationService:
                         else None
                     ),
                     sensor_id=(
-                        str(data["sensor_id"]) if data.get("sensor_id") is not None else None
+                        str(data["sensor_id"])
+                        if data.get("sensor_id") is not None
+                        else None
                     ),
                     comparison=(
                         str(data["comparison"])
@@ -284,6 +303,22 @@ class RuntimeApplicationService:
                 self.runtime.configure_design_profile(
                     PondDesignProfile.from_dict(data["profile"]),
                     actor=str(data.get("actor", role)),
+                )
+            elif action == "configure_biological_profile":
+                profile = BiologicalProcessProfile.from_dict(data["profile"])
+                self.runtime.model.configure_biological_profile(profile)
+                self.runtime.events.append(
+                    self.runtime.clock.current,
+                    EventType.CONFIGURATION,
+                    "BIOLOGICAL_PROCESS_PROFILE_CONFIGURED",
+                    {
+                        "actor": str(data.get("actor", role)),
+                        "profile_id": profile.profile_id,
+                        "revision": profile.revision,
+                        "source_reference": profile.source_reference,
+                        "provenance": profile.provenance,
+                        "hidden_default_values": False,
+                    },
                 )
             elif action == "set_hydraulic_restriction":
                 self.runtime.set_hydraulic_restriction(
