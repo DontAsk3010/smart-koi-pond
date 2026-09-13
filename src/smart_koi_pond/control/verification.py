@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
@@ -56,3 +57,12 @@ class VerificationManager:
                 task.status = VerificationStatus.FAILED_RESPONSE
             completed.append(task)
         return completed
+
+    def restore(self, tasks: Iterable[VerificationTask]) -> None:
+        self.tasks = list(tasks)
+        counters: list[int] = []
+        for task in self.tasks:
+            prefix, separator, suffix = task.verification_id.rpartition("-")
+            if separator and prefix == "verify" and suffix.isdigit():
+                counters.append(int(suffix))
+        self._counter = max(counters, default=0)
