@@ -156,12 +156,13 @@ SIMULATION_EXIT_SIL_MATRIX: tuple[SILCase, ...] = (
     ),
     SILCase(
         "sil_16_supervisory_network_loss_active_fault",
-        GateStatus.HOLD,
+        GateStatus.PASS,
         (
-            "Local control has no supervisory dependency, but the current runtime "
-            "has no dedicated network-outage/reconciliation SIL case yet."
+            "A supervisory publication outage does not stop local correction; "
+            "canonical events missed by the consumer are replayed from the last "
+            "delivered sequence after reconnection."
         ),
-        "HOLD:DEDICATED_NETWORK_OUTAGE_EVIDENCE_PENDING",
+        "test_sil_16_supervisory_network_loss_active_fault",
     ),
     SILCase(
         "sil_17_capability_loss_restoration",
