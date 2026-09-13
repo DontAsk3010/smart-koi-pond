@@ -320,17 +320,21 @@ def restore_checkpoint(
     )
 
 
-def save_checkpoint(path: str | Path, checkpoint: dict[str, Any]) -> Path:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(f"{target.suffix}.tmp")
-    temporary.write_text(
-        json.dumps(_jsonable(checkpoint), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, target)
-    return target
+class JsonCheckpointStore:
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
 
+    def write(self, checkpoint: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(checkpoint, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
 
-def load_checkpoint(path: str | Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    def read(self) -> dict[str, Any]:
+        loaded = json.loads(self.path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError("checkpoint file must contain a JSON object")
+        return loaded
