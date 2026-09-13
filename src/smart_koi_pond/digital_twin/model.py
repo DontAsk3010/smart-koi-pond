@@ -17,6 +17,7 @@ class ActuatorEffects:
     primary_aerator_gain_mg_l_per_hour: float = 0.55
     backup_aerator_gain_mg_l_per_hour: float = 0.75
     top_up_gain_pct_per_hour: float = 12.0
+    drain_loss_pct_per_hour: float = 18.0
     temperature_exchange_per_hour: float = 0.08
 
 
@@ -73,6 +74,8 @@ class PondModel:
         level_delta = -self.environment.leak_pct_per_hour
         if feedback_on.get("top_up_valve", False):
             level_delta += e.top_up_gain_pct_per_hour
+        if feedback_on.get("drain_valve", False):
+            level_delta -= e.drain_loss_pct_per_hour
         next_level = self.state.water_level_pct + level_delta * hours
         self.state.water_level_pct = min(100.0, max(0.0, next_level))
         return self.state

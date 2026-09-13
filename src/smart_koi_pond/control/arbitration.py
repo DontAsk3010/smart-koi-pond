@@ -31,6 +31,16 @@ def arbitrate(
             "AUTO_BLOCKED_BY_COMMAND_OWNERSHIP",
         )
 
+    if intent.owner != CommandOwner.AUTO and current_owner != intent.owner:
+        return ArbitratedCommand(
+            intent.asset_id,
+            intent.requested_on,
+            False,
+            current_owner,
+            False,
+            "COMMAND_OWNER_MISMATCH",
+        )
+
     if availability in BLOCKING_AVAILABILITY and intent.requested_on:
         return ArbitratedCommand(
             intent.asset_id,
