@@ -23,7 +23,6 @@ from smart_koi_pond.scenarios.sil_stress_matrix import (
 )
 from smart_koi_pond.sensors.virtual import SensorFault
 
-
 POLICY = SimulationControlPolicy(
     do_watch_below=5.0,
     do_emergency_below=4.0,
