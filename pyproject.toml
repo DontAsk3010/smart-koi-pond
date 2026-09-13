@@ -11,6 +11,9 @@ requires-python = ">=3.11"
 authors = [{name = "Smart Koi Pond Project"}]
 dependencies = []
 
+[project.scripts]
+smart-koi-pond-ui = "smart_koi_pond.dashboard.app:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",

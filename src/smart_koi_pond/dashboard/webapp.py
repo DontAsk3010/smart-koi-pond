@@ -1,0 +1,116 @@
+import json
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from smart_koi_pond.dashboard.service import RuntimeApplicationService
+from smart_koi_pond.dashboard.web_ui import INDEX_HTML
+
+
+def _handler_type(service: RuntimeApplicationService):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "SmartKoiPond/0.1"
+
+        def _send_json(self, payload, status: int = HTTPStatus.OK) -> None:
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path == "/":
+                body = INDEX_HTML.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if parsed.path == "/api/health":
+                self._send_json(
+                    {
+                        "status": "ok",
+                        "execution_mode": service.last_snapshot.execution_mode,
+                        "run_id": service.last_snapshot.run_id,
+                    }
+                )
+                return
+
+            if parsed.path == "/api/runtime":
+                query = parse_qs(parsed.query)
+                try:
+                    after = int(query.get("after", ["0"])[0])
+                    self._send_json(service.publication(after_sequence=after))
+                except (TypeError, ValueError) as exc:
+                    self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+
+            self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+
+        def do_POST(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path != "/api/command":
+                self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > 64_000:
+                    raise ValueError("invalid request body length")
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(body, dict):
+                    raise ValueError("request body must be a JSON object")
+                action = str(body["action"])
+                payload = body.get("payload", {})
+                if not isinstance(payload, dict):
+                    raise ValueError("payload must be a JSON object")
+                role = self.headers.get("X-Koi-Role", "viewer").lower()
+                snapshot = service.command(action, payload, role=role)
+                self._send_json(
+                    {
+                        "accepted": True,
+                        "action": action,
+                        "publication": service.runtime.publish(
+                            snapshot,
+                            after_sequence=0,
+                        ),
+                    }
+                )
+            except PermissionError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
+            except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+        def log_message(self, format: str, *args) -> None:
+            return
+
+    return Handler
+
+
+def create_server(
+    service: RuntimeApplicationService,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+) -> ThreadingHTTPServer:
+    return ThreadingHTTPServer((host, port), _handler_type(service))
+
+
+def serve(
+    service: RuntimeApplicationService,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+) -> None:
+    server = create_server(service, host=host, port=port)
+    service.start_background()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
+        service.stop_background()

@@ -1,0 +1,183 @@
+import math
+import threading
+from typing import Any
+
+from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
+from smart_koi_pond.domain.enums import EventType
+from smart_koi_pond.domain.models import RuntimeSnapshot
+from smart_koi_pond.sensors.virtual import SensorFault
+
+_ROLE_LEVEL = {"viewer": 0, "operator": 1, "engineering": 2}
+_ACTION_LEVEL = {
+    "pause": 1,
+    "resume": 1,
+    "return_to_auto": 1,
+    "restore_power": 1,
+    "set_acceleration": 2,
+    "start_blackout": 2,
+    "start_manual_maintenance": 2,
+    "start_sensor_calibration": 2,
+    "start_partial_shutdown": 2,
+    "start_safe_total_shutdown": 2,
+    "start_water_change": 2,
+    "start_filter_clean": 2,
+    "manual_command": 2,
+    "inject_sensor_fault": 2,
+    "clear_sensor_fault": 2,
+}
+
+
+class RuntimeApplicationService:
+    """Thread-safe application boundary around the canonical Digital Twin runtime."""
+
+    def __init__(self, runtime: DigitalTwinRuntime, *, step_seconds: float = 1.0) -> None:
+        if step_seconds <= 0:
+            raise ValueError("step_seconds must be positive")
+        self.runtime = runtime
+        self.step_seconds = step_seconds
+        self._lock = threading.RLock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_snapshot = runtime.tick(0.0)
+
+    @property
+    def last_snapshot(self) -> RuntimeSnapshot:
+        with self._lock:
+            return self._last_snapshot
+
+    def step(self, seconds: float | None = None) -> RuntimeSnapshot:
+        with self._lock:
+            self._last_snapshot = self.runtime.tick(
+                self.step_seconds if seconds is None else seconds
+            )
+            return self._last_snapshot
+
+    def publication(self, *, after_sequence: int = 0) -> dict[str, Any]:
+        with self._lock:
+            return self.runtime.publish(
+                self._last_snapshot,
+                after_sequence=after_sequence,
+            )
+
+    def _require_role(self, action: str, role: str) -> None:
+        required = _ACTION_LEVEL.get(action)
+        if required is None:
+            raise ValueError(f"unsupported command action: {action}")
+        actual = _ROLE_LEVEL.get(role)
+        if actual is None:
+            raise PermissionError(f"unknown role: {role}")
+        if actual < required:
+            self.runtime.events.append(
+                self.runtime.clock.current,
+                EventType.SCENARIO,
+                "UI_COMMAND_REJECTED",
+                {"action": action, "role": role, "reason": "INSUFFICIENT_ROLE"},
+            )
+            raise PermissionError(f"role {role} is not authorized for {action}")
+
+    def command(
+        self,
+        action: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        role: str = "viewer",
+    ) -> RuntimeSnapshot:
+        data = payload or {}
+        with self._lock:
+            self._require_role(action, role)
+
+            if action == "pause":
+                self.runtime.clock.pause()
+            elif action == "resume":
+                self.runtime.clock.resume()
+            elif action == "set_acceleration":
+                value = float(data["value"])
+                if not math.isfinite(value) or value <= 0:
+                    raise ValueError("acceleration must be a positive finite number")
+                self.runtime.clock.acceleration = value
+            elif action == "return_to_auto":
+                self.runtime.request_return_to_auto()
+            elif action == "restore_power":
+                self.runtime.restore_power()
+            elif action == "start_blackout":
+                self.runtime.start_blackout(str(data.get("reason", "SIMULATED_POWER_LOSS")))
+            elif action == "start_manual_maintenance":
+                self.runtime.start_manual_maintenance(
+                    data.get("scope", []),
+                    str(data.get("reason", "UI_MAINTENANCE")),
+                    service_locked=data.get("service_locked", []),
+                )
+            elif action == "start_sensor_calibration":
+                self.runtime.start_sensor_calibration(
+                    data.get("sensor_ids", []),
+                    str(data.get("reason", "UI_SENSOR_CALIBRATION")),
+                )
+            elif action == "start_partial_shutdown":
+                self.runtime.start_partial_shutdown(
+                    data.get("asset_ids", []),
+                    str(data.get("reason", "UI_PARTIAL_SHUTDOWN")),
+                )
+            elif action == "start_safe_total_shutdown":
+                self.runtime.start_safe_total_shutdown(
+                    str(data.get("reason", "UI_SAFE_TOTAL_SHUTDOWN")),
+                    fish_present=bool(data.get("fish_present", True)),
+                )
+            elif action == "start_water_change":
+                self.runtime.start_water_change(
+                    str(data.get("reason", "UI_WATER_CHANGE")),
+                    target_drain_level_pct=float(data["target_drain_level_pct"]),
+                    target_refill_level_pct=float(data["target_refill_level_pct"]),
+                )
+            elif action == "start_filter_clean":
+                self.runtime.start_filter_clean(
+                    data.get("service_scope", []),
+                    str(data.get("reason", "UI_FILTER_CLEAN")),
+                )
+            elif action == "manual_command":
+                self.runtime.manual_command(
+                    str(data["asset_id"]),
+                    bool(data["on"]),
+                    str(data.get("reason", "UI_MANUAL_COMMAND")),
+                )
+            elif action == "inject_sensor_fault":
+                sensor_id = str(data["sensor_id"])
+                mode = str(data["mode"])
+                if mode not in {"dropout", "stuck", "drift"}:
+                    raise ValueError("sensor fault mode must be dropout, stuck, or drift")
+                self.runtime.sensors.set_fault(
+                    sensor_id,
+                    SensorFault(mode, data.get("value")),
+                )
+            elif action == "clear_sensor_fault":
+                self.runtime.sensors.set_fault(str(data["sensor_id"]), None)
+
+            self.runtime.events.append(
+                self.runtime.clock.current,
+                EventType.SCENARIO,
+                "UI_COMMAND_ACCEPTED",
+                {"action": action, "role": role},
+            )
+            self._last_snapshot = self.runtime.tick(0.0)
+            return self._last_snapshot
+
+    def start_background(self) -> None:
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return
+            self._stop.clear()
+            self._thread = threading.Thread(
+                target=self._background_loop,
+                name="smart-koi-pond-runtime",
+                daemon=True,
+            )
+            self._thread.start()
+
+    def stop_background(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=max(2.0, self.step_seconds * 2.0))
+
+    def _background_loop(self) -> None:
+        while not self._stop.wait(self.step_seconds):
+            self.step(self.step_seconds)
