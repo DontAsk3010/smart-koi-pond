@@ -1,6 +1,7 @@
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any
 
 
 class EngineeringProvenance(StrEnum):
