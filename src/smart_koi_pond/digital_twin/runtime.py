@@ -34,6 +34,8 @@ from smart_koi_pond.events.log import EventLog
 from smart_koi_pond.events.publication import CanonicalRuntimePublisher
 from smart_koi_pond.persistence.checkpoint import (
     capture_checkpoint as capture_runtime_checkpoint,
+)
+from smart_koi_pond.persistence.checkpoint import (
     restore_checkpoint as restore_runtime_checkpoint,
 )
 from smart_koi_pond.sensors.virtual import VirtualSensorSuite
