@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
 
@@ -29,3 +30,16 @@ class EventLog:
         )
         self._events.append(record)
         return record
+
+    def restore(self, records: Iterable[EventRecord]) -> None:
+        restored = list(records)
+        expected = list(range(1, len(restored) + 1))
+        actual = [record.sequence for record in restored]
+        if actual != expected:
+            raise ValueError("event sequence must be contiguous and start at 1")
+        self._events = restored
+
+    def after(self, sequence: int) -> tuple[EventRecord, ...]:
+        if sequence < 0:
+            raise ValueError("sequence must be non-negative")
+        return tuple(record for record in self._events if record.sequence > sequence)

@@ -1,3 +1,6 @@
+from dataclasses import replace
+from uuid import uuid4
+
 from smart_koi_pond.actuators.virtual import VirtualActuatorBank
 from smart_koi_pond.control.arbitration import arbitrate
 from smart_koi_pond.control.engine import (
@@ -25,6 +28,8 @@ from smart_koi_pond.domain.models import (
     RuntimeSnapshot,
 )
 from smart_koi_pond.events.log import EventLog
+from smart_koi_pond.events.publication import CanonicalRuntimePublisher
+from smart_koi_pond.persistence.checkpoint import capture_checkpoint, restore_checkpoint
 from smart_koi_pond.sensors.virtual import VirtualSensorSuite
 
 
@@ -35,16 +40,21 @@ class DigitalTwinRuntime:
         policy: SimulationControlPolicy,
         *,
         clock: SimulationClock | None = None,
+        run_id: str | None = None,
+        config_version: str = "simulation-policy-v1",
     ) -> None:
         self.model = model
         self.policy = policy
         self.clock = clock or SimulationClock.start()
+        self.run_id = run_id or str(uuid4())
+        self.config_version = config_version
         self.execution_mode = ExecutionMode.SIMULATION
         self.sensors = VirtualSensorSuite()
         self.actuators = VirtualActuatorBank()
         self.events = EventLog()
         self.verification = VerificationManager()
         self.modes = OperatingModeManager(self.actuators, self.sensors, self.events)
+        self.publisher = CanonicalRuntimePublisher()
         self._last_feedback = self.actuators.feedback_map()
 
     @property
@@ -186,7 +196,7 @@ class DigitalTwinRuntime:
             execution_mode=self.execution_mode,
             operating_mode=self.operating_mode,
             operating_status=self.modes.status,
-            pond_truth=self.model.state,
+            pond_truth=replace(self.model.state),
             raw_samples=raw,
             validated=validated,
             estimate=estimate,
@@ -195,6 +205,20 @@ class DigitalTwinRuntime:
             commands=commands,
             feedback=feedback,
             verification=list(self.verification.tasks),
+        )
+
+    def capture_checkpoint(self):
+        return capture_checkpoint(self)
+
+    def restore_checkpoint(self, checkpoint) -> None:
+        restore_checkpoint(self, checkpoint)
+
+    def publish(self, snapshot: RuntimeSnapshot, *, after_sequence: int = 0):
+        return self.publisher.publish(
+            run_id=self.run_id,
+            snapshot=snapshot,
+            event_log=self.events,
+            after_sequence=after_sequence,
         )
 
     def start_manual_maintenance(
