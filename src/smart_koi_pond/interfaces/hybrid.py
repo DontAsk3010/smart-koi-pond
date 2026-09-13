@@ -184,7 +184,9 @@ class HybridActuatorBank:
         source = ActuatorSourceState(source)
         if source == ActuatorSourceState.REAL_ACTUATOR:
             if self.virtual.assets[asset_id].feedback_on:
-                raise RuntimeError(f"virtual actuator must be safely OFF before source switch: {asset_id}")
+                raise RuntimeError(
+                    f"virtual actuator must be safely OFF before source switch: {asset_id}"
+                )
             if self.real.device_id_for(asset_id) is None:
                 raise RuntimeError(f"real actuator has no governed device binding: {asset_id}")
         self._sources[asset_id] = source
