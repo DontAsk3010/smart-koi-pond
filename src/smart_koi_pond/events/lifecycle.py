@@ -27,6 +27,7 @@ class AlarmIncidentManager:
     """
 
     _SYSTEM_KEY = "SYSTEM_STATE"
+    _LOW_WATER_LOCKOUT_PREFIX = "LOW_WATER_RECOVERY_LOCKOUT"
 
     def __init__(self, events: EventLog) -> None:
         self.events = events
@@ -263,6 +264,46 @@ class AlarmIncidentManager:
                     source_state=classification.state,
                 )
 
+    def _update_low_water_lockout_alarm(
+        self,
+        now: datetime,
+        classification: Classification,
+        recovery_lockout: tuple[str, str] | None,
+        touched: set[str],
+    ) -> None:
+        if recovery_lockout is None:
+            return
+
+        attempt_id, reason = recovery_lockout
+        key = f"{self._LOW_WATER_LOCKOUT_PREFIX}:{attempt_id}"
+        touched.add(key)
+        existing = self._alarm_for_key(key)
+        reasons = (
+            f"ATTEMPT:{attempt_id}",
+            f"REASON:{reason}",
+            "ASSET:top_up_valve",
+            "AUTO_RETRY_LOCKED",
+        )
+        if existing is None:
+            self._open_alarm(
+                condition_key=key,
+                code="LOW_WATER_RECOVERY_LOCKOUT",
+                now=now,
+                source_state=classification.state,
+                reasons=reasons,
+                lifecycle=AlarmLifecycle.ESCALATED,
+            )
+            return
+
+        existing.code = "LOW_WATER_RECOVERY_LOCKOUT"
+        self._set_alarm_lifecycle(
+            existing,
+            AlarmLifecycle.ESCALATED,
+            now,
+            reasons=reasons,
+            source_state=classification.state,
+        )
+
     def _advance_recovery(
         self,
         now: datetime,
@@ -331,6 +372,8 @@ class AlarmIncidentManager:
         now: datetime,
         classification: Classification,
         completed_verifications: list[VerificationTask],
+        *,
+        recovery_lockout: tuple[str, str] | None = None,
     ) -> None:
         touched: set[str] = set()
         self._update_system_alarm(now, classification, touched)
@@ -338,6 +381,12 @@ class AlarmIncidentManager:
             now,
             classification,
             completed_verifications,
+            touched,
+        )
+        self._update_low_water_lockout_alarm(
+            now,
+            classification,
+            recovery_lockout,
             touched,
         )
         self._advance_recovery(now, classification, touched)
