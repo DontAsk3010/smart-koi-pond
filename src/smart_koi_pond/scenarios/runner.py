@@ -1,5 +1,5 @@
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.models import RuntimeSnapshot

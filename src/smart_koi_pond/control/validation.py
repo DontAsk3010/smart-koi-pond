@@ -1,4 +1,7 @@
-from smart_koi_pond.domain.enums import AvailabilityState, DataQuality
+from smart_koi_pond.domain.enums import (
+    AvailabilityState,
+    DataQuality,
+)
 from smart_koi_pond.domain.models import SensorSample, ValidatedMeasurement
 
 
