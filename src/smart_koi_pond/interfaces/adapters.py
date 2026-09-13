@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from smart_koi_pond.domain.enums import (
     ActuatorSourceState,
