@@ -6,10 +6,10 @@ from enum import Enum
 from typing import Any
 
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
+from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import RuntimeSnapshot
 from smart_koi_pond.domain.process_visual import project_process_visual
-from smart_koi_pond.sensors.virtual import SensorFault
 
 _ROLE_LEVEL = {"viewer": 0, "operator": 1, "engineering": 2}
 _ACTION_LEVEL = {
@@ -30,6 +30,11 @@ _ACTION_LEVEL = {
     "manual_command": 2,
     "inject_sensor_fault": 2,
     "clear_sensor_fault": 2,
+    "inject_actuator_fault": 2,
+    "clear_actuator_fault": 2,
+    "safe_runtime_reset": 2,
+    "schedule_scenario_trigger": 2,
+    "cancel_scenario_trigger": 2,
     "configure_module": 2,
 }
 
@@ -62,6 +67,7 @@ class RuntimeApplicationService:
             raise ValueError("step_seconds must be positive")
         self.runtime = runtime
         self.step_seconds = step_seconds
+        self.scenarios = VirtualScenarioController(runtime)
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -72,9 +78,15 @@ class RuntimeApplicationService:
         with self._lock:
             return self._last_snapshot
 
+    def _tick_and_evaluate(self, seconds: float) -> RuntimeSnapshot:
+        snapshot = self.runtime.tick(seconds)
+        if self.scenarios.evaluate(snapshot):
+            snapshot = self.runtime.tick(0.0)
+        return snapshot
+
     def step(self, seconds: float | None = None) -> RuntimeSnapshot:
         with self._lock:
-            self._last_snapshot = self.runtime.tick(
+            self._last_snapshot = self._tick_and_evaluate(
                 self.step_seconds if seconds is None else seconds
             )
             return self._last_snapshot
@@ -89,6 +101,7 @@ class RuntimeApplicationService:
                 project_process_visual(self._last_snapshot)
             )
             publication["process_visual_schema_version"] = 1
+            publication["scenario_triggers"] = _wire(self.scenarios.triggers)
             return publication
 
     def history(self, *, limit: int = 100) -> list[dict[str, Any]]:
@@ -210,16 +223,52 @@ class RuntimeApplicationService:
                     str(data.get("reason", "UI_MANUAL_COMMAND")),
                 )
             elif action == "inject_sensor_fault":
-                sensor_id = str(data["sensor_id"])
-                mode = str(data["mode"])
-                if mode not in {"dropout", "stuck", "drift"}:
-                    raise ValueError("sensor fault mode must be dropout, stuck, or drift")
-                self.runtime.sensors.set_fault(
-                    sensor_id,
-                    SensorFault(mode, data.get("value")),
+                self.scenarios.inject_sensor_fault(
+                    str(data["sensor_id"]),
+                    str(data["mode"]),
+                    data.get("value"),
                 )
             elif action == "clear_sensor_fault":
-                self.runtime.sensors.set_fault(str(data["sensor_id"]), None)
+                self.scenarios.clear_sensor_fault(str(data["sensor_id"]))
+            elif action == "inject_actuator_fault":
+                self.scenarios.inject_actuator_fault(
+                    str(data["asset_id"]),
+                    str(data["mode"]),
+                    data.get("value"),
+                )
+            elif action == "clear_actuator_fault":
+                self.scenarios.clear_actuator_fault(str(data["asset_id"]))
+            elif action == "safe_runtime_reset":
+                self.scenarios.safe_runtime_reset()
+            elif action == "schedule_scenario_trigger":
+                trigger = ScenarioTrigger(
+                    action=str(data["scenario_action"]),
+                    payload=dict(data.get("scenario_payload", {})),
+                    trigger_id=str(data.get("trigger_id") or ScenarioTrigger("", {}).trigger_id),
+                    after_seconds=(
+                        float(data["after_seconds"])
+                        if data.get("after_seconds") is not None
+                        else None
+                    ),
+                    sensor_id=(
+                        str(data["sensor_id"]) if data.get("sensor_id") is not None else None
+                    ),
+                    comparison=(
+                        str(data["comparison"])
+                        if data.get("comparison") is not None
+                        else None
+                    ),
+                    threshold=(
+                        float(data["threshold"])
+                        if data.get("threshold") is not None
+                        else None
+                    ),
+                    system_state=data.get("system_state"),
+                    one_shot=bool(data.get("one_shot", True)),
+                )
+                self.scenarios.schedule(trigger)
+            elif action == "cancel_scenario_trigger":
+                self.scenarios.cancel(str(data["trigger_id"]))
             elif action == "configure_module":
                 self.runtime.configure_module(
                     str(data["module_id"]),
@@ -234,7 +283,7 @@ class RuntimeApplicationService:
                 "UI_COMMAND_ACCEPTED",
                 {"action": action, "role": role},
             )
-            self._last_snapshot = self.runtime.tick(0.0)
+            self._last_snapshot = self._tick_and_evaluate(0.0)
             return self._last_snapshot
 
     def start_background(self) -> None:
