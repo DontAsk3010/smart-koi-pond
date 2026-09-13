@@ -85,6 +85,7 @@ def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
                 "owner": asset.owner.value,
                 "availability": asset.availability.value,
                 "feedback_on": asset.feedback_on,
+                "effectiveness": asset.effectiveness,
             }
             for asset_id, asset in runtime.actuators.assets.items()
         },
@@ -298,6 +299,7 @@ def restore_checkpoint(
     for asset_id, state in saved_assets.items():
         runtime.actuators.set_availability(asset_id, AvailabilityState(state["availability"]))
         runtime.actuators.set_owner(asset_id, CommandOwner(state["owner"]))
+        runtime.actuators.set_effectiveness(asset_id, float(state.get("effectiveness", 1.0)))
         runtime.actuators.assets[asset_id].feedback_on = False
 
     _restore_event_log(runtime, checkpoint)
@@ -318,21 +320,17 @@ def restore_checkpoint(
     )
 
 
-class JsonCheckpointStore:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
+def save_checkpoint(path: str | Path, checkpoint: dict[str, Any]) -> Path:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(f"{target.suffix}.tmp")
+    temporary.write_text(
+        json.dumps(_jsonable(checkpoint), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+    return target
 
-    def write(self, checkpoint: dict[str, Any]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(
-            json.dumps(checkpoint, sort_keys=True, separators=(",", ":")),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
 
-    def read(self) -> dict[str, Any]:
-        loaded = json.loads(self.path.read_text(encoding="utf-8"))
-        if not isinstance(loaded, dict):
-            raise ValueError("checkpoint file must contain a JSON object")
-        return loaded
+def load_checkpoint(path: str | Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
