@@ -76,7 +76,8 @@ class InhibitedRealActuatorBank:
         existing = self._device_ids.get(asset_id)
         if existing is not None and existing != device_id:
             raise RuntimeError(
-                f"actuator identity already bound: {asset_id} -> {existing}; start a new reconciled binding"
+                "actuator identity already bound: "
+                f"{asset_id} -> {existing}; start a new reconciled binding"
             )
         self._device_ids[asset_id] = device_id
 
@@ -96,14 +97,19 @@ class InhibitedRealActuatorBank:
             raise RuntimeError(f"actuator has no governed device binding: {asset_id}")
         if device_id != expected_device:
             raise RuntimeError(
-                f"actuator identity mismatch for {asset_id}: expected {expected_device}, got {device_id}"
+                f"actuator identity mismatch for {asset_id}: "
+                f"expected {expected_device}, got {device_id}"
             )
         previous_timestamp = self._feedback_timestamps.get(asset_id)
         if previous_timestamp is not None and timestamp <= previous_timestamp:
             raise ValueError(f"non-monotonic actuator feedback rejected for {asset_id}")
         asset = self.assets[asset_id]
         asset.availability = availability
-        asset.feedback_on = bool(feedback_on) if availability == AvailabilityState.AVAILABLE else False
+        asset.feedback_on = (
+            bool(feedback_on)
+            if availability == AvailabilityState.AVAILABLE
+            else False
+        )
         self._feedback_timestamps[asset_id] = timestamp
 
     def set_availability(self, asset_id: str, availability: AvailabilityState) -> None:
@@ -134,7 +140,8 @@ class InhibitedRealActuatorBank:
     def execute(self, command: ArbitratedCommand, timestamp: datetime) -> DeviceFeedback:
         if command.accepted or command.final_on:
             raise RuntimeError(
-                "command reached command-inhibited real actuator adapter; runtime authority gate failed"
+                "command reached command-inhibited real actuator adapter; "
+                "runtime authority gate failed"
             )
         asset = self.assets[command.asset_id]
         return DeviceFeedback(
