@@ -330,7 +330,10 @@ def _restore_adapter_state(
             "checkpoint sensor adapter identity does not match runtime: "
             f"{saved_sensor_adapter} != {runtime.sensors.adapter_id}"
         )
-    if saved_actuator_adapter is not None and saved_actuator_adapter != runtime.actuators.adapter_id:
+    if (
+        saved_actuator_adapter is not None
+        and saved_actuator_adapter != runtime.actuators.adapter_id
+    ):
         raise ValueError(
             "checkpoint actuator adapter identity does not match runtime: "
             f"{saved_actuator_adapter} != {runtime.actuators.adapter_id}"
