@@ -234,11 +234,6 @@ class DigitalTwinRuntime:
         commands = {}
         feedback = {}
         auto_intents = decide(estimate, classification, self.policy)
-        registry = capability.registry
-        auto_top_up_available = (
-            registry is not None
-            and "automation.auto_top_up" in registry.available_capabilities
-        )
         water_intents = (
             self.low_water_recovery.plan(
                 now=now,
@@ -249,7 +244,7 @@ class DigitalTwinRuntime:
                 policy=self.policy,
                 events=self.events,
             )
-            if auto_top_up_available
+            if self.capability_registry.structurally_enabled("auto_top_up")
             else []
         )
         workflow_intents = self.modes.command_intents()
