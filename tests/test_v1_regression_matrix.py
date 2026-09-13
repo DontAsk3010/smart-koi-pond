@@ -287,10 +287,43 @@ def test_stuck_sensor_discrimination_gap_is_explicitly_held() -> None:
     assert case("sensor_stuck_drift_discrimination").status == GateStatus.HOLD
 
 
-def test_partial_actuator_degradation_gap_is_explicitly_held() -> None:
-    runtime = make_runtime()
-    assert not hasattr(runtime.actuators.assets["main_pump"], "effectiveness")
-    assert case("partial_actuator_degradation").status == GateStatus.HOLD
+def test_partial_actuator_degradation_is_detected_by_process_verification() -> None:
+    policy = SimulationControlPolicy(
+        do_watch_below=5.0,
+        do_emergency_below=4.0,
+        do_recover_above=5.5,
+        flow_watch_below=8.0,
+        water_level_low_below=70.0,
+        verification_delay_seconds=1.0,
+        do_verification_min_delta=0.2,
+        temperature_watch_above=30.0,
+        temperature_emergency_above=32.0,
+    )
+    runtime = make_runtime(dissolved_oxygen=4.6, policy=policy)
+    runtime.actuators.set_effectiveness("backup_aerator", 0.1)
+
+    first = runtime.tick(0)
+    assert first.feedback["backup_aerator"].feedback_on is True
+    assert first.feedback["backup_aerator"].effectiveness == 0.1
+    assert first.assets["backup_aerator"].effectiveness == 0.1
+
+    second = runtime.tick(2)
+    assert runtime.actuators.assets["backup_aerator"].feedback_on is True
+    assert any(
+        task.asset_id == "backup_aerator"
+        and task.status == VerificationStatus.FAILED_RESPONSE
+        for task in second.verification
+    )
+    assert any(
+        alarm.condition_key.startswith("VERIFICATION:") for alarm in second.alarms
+    )
+
+    checkpoint = runtime.capture_checkpoint()
+    resumed = make_runtime(policy=policy)
+    resumed.restore_checkpoint(checkpoint)
+    assert resumed.actuators.assets["backup_aerator"].effectiveness == 0.1
+    assert resumed.actuators.assets["backup_aerator"].feedback_on is False
+    assert case("partial_actuator_degradation").status == GateStatus.PASS
 
 
 def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> None:
@@ -319,5 +352,5 @@ def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> No
     }
     assert case_ids == required
     assert payload["end_to_end_gate"] == GateStatus.HOLD
-    assert payload["pass_count"] == 15
-    assert payload["hold_count"] == 3
+    assert payload["pass_count"] == 16
+    assert payload["hold_count"] == 2
