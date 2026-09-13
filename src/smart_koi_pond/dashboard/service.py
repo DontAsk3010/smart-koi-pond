@@ -1,5 +1,8 @@
 import math
 import threading
+from dataclasses import asdict, is_dataclass
+from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
@@ -13,6 +16,7 @@ _ACTION_LEVEL = {
     "resume": 1,
     "return_to_auto": 1,
     "restore_power": 1,
+    "acknowledge_alarm": 1,
     "set_acceleration": 2,
     "start_blackout": 2,
     "start_manual_maintenance": 2,
@@ -25,6 +29,20 @@ _ACTION_LEVEL = {
     "inject_sensor_fault": 2,
     "clear_sensor_fault": 2,
 }
+
+
+def _wire(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return value.value
+    if is_dataclass(value):
+        return _wire(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _wire(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_wire(item) for item in value]
+    return value
 
 
 class RuntimeApplicationService:
@@ -58,6 +76,18 @@ class RuntimeApplicationService:
                 self._last_snapshot,
                 after_sequence=after_sequence,
             )
+
+    def history(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            return [_wire(frame) for frame in self.runtime.recent_history(limit)]
+
+    def playback(self, frame_sequence: int) -> dict[str, Any]:
+        with self._lock:
+            return _wire(self.runtime.playback_frame(frame_sequence))
+
+    def incident_evidence(self, incident_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return [_wire(event) for event in self.runtime.incident_evidence(incident_id)]
 
     def _require_role(self, action: str, role: str) -> None:
         required = _ACTION_LEVEL.get(action)
@@ -99,6 +129,9 @@ class RuntimeApplicationService:
                 self.runtime.request_return_to_auto()
             elif action == "restore_power":
                 self.runtime.restore_power()
+            elif action == "acknowledge_alarm":
+                actor = str(data.get("actor", role))
+                self.runtime.acknowledge_alarm(str(data["alarm_id"]), actor)
             elif action == "start_blackout":
                 self.runtime.start_blackout(str(data.get("reason", "SIMULATED_POWER_LOSS")))
             elif action == "start_manual_maintenance":

@@ -42,13 +42,36 @@ def _handler_type(service: RuntimeApplicationService):
                 )
                 return
 
-            if parsed.path == "/api/runtime":
-                query = parse_qs(parsed.query)
-                try:
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/runtime":
                     after = int(query.get("after", ["0"])[0])
                     self._send_json(service.publication(after_sequence=after))
-                except (TypeError, ValueError) as exc:
-                    self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                    return
+
+                if parsed.path == "/api/history":
+                    limit = int(query.get("limit", ["100"])[0])
+                    if not 1 <= limit <= 5000:
+                        raise ValueError("limit must be between 1 and 5000")
+                    self._send_json({"frames": service.history(limit=limit)})
+                    return
+
+                if parsed.path == "/api/playback":
+                    frame = int(query["frame"][0])
+                    self._send_json(service.playback(frame))
+                    return
+
+                if parsed.path == "/api/incident":
+                    incident_id = str(query["id"][0])
+                    self._send_json(
+                        {
+                            "incident_id": incident_id,
+                            "events": service.incident_evidence(incident_id),
+                        }
+                    )
+                    return
+            except (KeyError, TypeError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
 
             self._send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)

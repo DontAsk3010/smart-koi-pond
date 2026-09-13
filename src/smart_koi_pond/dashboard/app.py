@@ -10,8 +10,11 @@ from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.models import PondState
 
 
-def build_simulation_runtime() -> DigitalTwinRuntime:
-    """Build the V1 simulator demo runtime.
+def build_simulation_runtime(
+    *,
+    historian_path: str | None = None,
+) -> DigitalTwinRuntime:
+    """Build the V1 simulator runtime.
 
     These values are explicit software-simulation inputs, not production biological
     engineering setpoints or commissioning authority.
@@ -41,6 +44,7 @@ def build_simulation_runtime() -> DigitalTwinRuntime:
         policy,
         clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
         config_version="digital-twin-v1-demo-only",
+        historian_path=historian_path,
     )
     runtime.actuators.assets["main_pump"].feedback_on = True
     runtime.actuators.assets["primary_aerator"].feedback_on = True
@@ -51,10 +55,15 @@ def build_simulation_runtime() -> DigitalTwinRuntime:
 def main() -> None:
     host = os.getenv("SMART_KOI_HOST", "127.0.0.1")
     port = int(os.getenv("SMART_KOI_PORT", "8080"))
-    runtime = build_simulation_runtime()
+    historian_path = os.getenv(
+        "SMART_KOI_HISTORIAN_PATH",
+        "runtime-data/historian.jsonl",
+    )
+    runtime = build_simulation_runtime(historian_path=historian_path)
     service = RuntimeApplicationService(runtime)
     print(f"Smart Koi Pond Digital Twin V1: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
+    print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)
 
 
