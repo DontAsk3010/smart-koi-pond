@@ -51,6 +51,11 @@ class BufferedRealSensorSuite:
             raise KeyError(sensor_id)
         return self._device_ids.get(sensor_id)
 
+    def has_sample(self, sensor_id: str) -> bool:
+        if sensor_id not in self.PARAMETER_MAP:
+            raise KeyError(sensor_id)
+        return sensor_id in self._samples
+
     def bind_device(self, sensor_id: str, device_id: str) -> None:
         if sensor_id not in self.PARAMETER_MAP:
             raise KeyError(sensor_id)
