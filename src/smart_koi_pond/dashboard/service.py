@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+from smart_koi_pond.digital_twin.hydraulics import PondDesignProfile
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
 from smart_koi_pond.domain.enums import EventType
@@ -37,6 +38,8 @@ _ACTION_LEVEL = {
     "schedule_scenario_trigger": 2,
     "cancel_scenario_trigger": 2,
     "configure_module": 2,
+    "configure_design_profile": 2,
+    "set_hydraulic_restriction": 2,
 }
 
 
@@ -275,6 +278,17 @@ class RuntimeApplicationService:
                     str(data["module_id"]),
                     installation_state=data.get("installation_state"),
                     enabled=data.get("enabled"),
+                    actor=str(data.get("actor", role)),
+                )
+            elif action == "configure_design_profile":
+                self.runtime.configure_design_profile(
+                    PondDesignProfile.from_dict(data["profile"]),
+                    actor=str(data.get("actor", role)),
+                )
+            elif action == "set_hydraulic_restriction":
+                self.runtime.set_hydraulic_restriction(
+                    str(data["route_id"]),
+                    float(data["throughput_factor"]),
                     actor=str(data.get("actor", role)),
                 )
 
