@@ -73,6 +73,7 @@ class CommandOwner(StrEnum):
     MANUAL = "MANUAL"
     MAINTENANCE = "MAINTENANCE"
     SHUTDOWN = "SHUTDOWN"
+    SAFETY = "SAFETY"
 
 
 class VerificationStatus(StrEnum):
@@ -107,3 +108,4 @@ class EventType(StrEnum):
     SCENARIO = "SCENARIO"
     ALARM = "ALARM"
     INCIDENT = "INCIDENT"
+    RECOVERY = "RECOVERY"

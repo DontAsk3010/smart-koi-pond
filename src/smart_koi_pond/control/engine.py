@@ -23,6 +23,13 @@ class SimulationControlPolicy:
     flow_verification_min_delta: float = 0.5
     temperature_watch_above: float | None = None
     temperature_emergency_above: float | None = None
+    low_water_auto_recovery_enabled: bool = False
+    water_level_recover_target: float | None = None
+    water_level_hard_high_cutoff: float | None = None
+    low_water_max_runtime_seconds: float = 300.0
+    low_water_max_level_gain_pct: float = 15.0
+    low_water_verification_delay_seconds: float = 30.0
+    water_level_verification_min_delta: float = 0.5
 
     def __post_init__(self) -> None:
         if (
@@ -33,6 +40,33 @@ class SimulationControlPolicy:
             raise ValueError(
                 "temperature_emergency_above must be greater than temperature_watch_above"
             )
+
+        if self.low_water_auto_recovery_enabled:
+            if self.water_level_recover_target is None:
+                raise ValueError(
+                    "water_level_recover_target is required when low-water auto recovery is enabled"
+                )
+            if self.water_level_hard_high_cutoff is None:
+                raise ValueError(
+                    "water_level_hard_high_cutoff is required when "
+                    "low-water auto recovery is enabled"
+                )
+            if not (
+                self.water_level_low_below
+                < self.water_level_recover_target
+                < self.water_level_hard_high_cutoff
+            ):
+                raise ValueError(
+                    "low-water trigger must be below recovery target and hard high-level cutoff"
+                )
+            if self.low_water_max_runtime_seconds <= 0:
+                raise ValueError("low_water_max_runtime_seconds must be positive")
+            if self.low_water_max_level_gain_pct <= 0:
+                raise ValueError("low_water_max_level_gain_pct must be positive")
+            if self.low_water_verification_delay_seconds < 0:
+                raise ValueError("low_water_verification_delay_seconds cannot be negative")
+            if self.water_level_verification_min_delta <= 0:
+                raise ValueError("water_level_verification_min_delta must be positive")
 
 
 def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
@@ -93,7 +127,14 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
             state = SystemState.DEGRADED
         reasons.append("FLOW_LOW")
 
-    if level is not None and level < policy.water_level_low_below:
+    if policy.low_water_auto_recovery_enabled and (
+        estimate.quality.get("water_level_pct") != DataQuality.GOOD
+        or level is None
+    ):
+        if state == SystemState.NORMAL:
+            state = SystemState.DEGRADED
+        reasons.append("REQUIRED_INPUT_MISSING:WATER_LEVEL")
+    elif level is not None and level < policy.water_level_low_below:
         if state in {SystemState.NORMAL, SystemState.WATCH}:
             state = SystemState.DEGRADED
         reasons.append("WATER_LEVEL_LOW")

@@ -12,6 +12,7 @@ from smart_koi_pond.control.engine import (
 from smart_koi_pond.control.operating_modes import OperatingModeManager, assess_capability
 from smart_koi_pond.control.validation import SensorValidationEngine
 from smart_koi_pond.control.verification import VerificationManager
+from smart_koi_pond.control.water_management import LowWaterRecoveryManager
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import PondModel
 from smart_koi_pond.domain.enums import (
@@ -63,6 +64,7 @@ class DigitalTwinRuntime:
         self.actuators = VirtualActuatorBank()
         self.events = EventLog()
         self.verification = VerificationManager()
+        self.low_water_recovery = LowWaterRecoveryManager()
         self.modes = OperatingModeManager(self.actuators, self.sensors, self.events)
         self.alarm_incidents = AlarmIncidentManager(self.events)
         self.historian = RuntimeHistorian(historian_path)
@@ -158,9 +160,30 @@ class DigitalTwinRuntime:
         commands = {}
         feedback = {}
         auto_intents = decide(estimate, classification, self.policy)
+        water_intents = self.low_water_recovery.plan(
+            now=now,
+            estimate=estimate,
+            operating_mode=self.operating_mode,
+            actuators=self.actuators,
+            completed_verifications=completed,
+            policy=self.policy,
+            events=self.events,
+        )
         workflow_intents = self.modes.command_intents()
+        ordinary_water_intents = [
+            intent for intent in water_intents if intent.owner != CommandOwner.SAFETY
+        ]
+        safety_water_intents = [
+            intent for intent in water_intents if intent.owner == CommandOwner.SAFETY
+        ]
 
-        for intent in [*auto_intents, *workflow_intents]:
+        all_intents = [
+            *auto_intents,
+            *ordinary_water_intents,
+            *workflow_intents,
+            *safety_water_intents,
+        ]
+        for intent in all_intents:
             command, device_feedback = self._execute_intent(intent, now)
             commands[intent.asset_id] = command
             feedback[intent.asset_id] = device_feedback
@@ -191,6 +214,14 @@ class DigitalTwinRuntime:
                         },
                     )
 
+            if intent.asset_id == LowWaterRecoveryManager.ASSET_ID:
+                self.low_water_recovery.observe_command(
+                    command,
+                    device_feedback,
+                    now,
+                    self.events,
+                )
+
         self._last_feedback = self.actuators.feedback_map()
 
         if self.modes.complete_recovery_if_ready(now, validated):
@@ -201,6 +232,18 @@ class DigitalTwinRuntime:
             and command.accepted
             and command.final_on
             for command in commands.values()
+        ):
+            classification = Classification(
+                SystemState.CORRECTING,
+                classification.reasons,
+            )
+
+        top_up_command = commands.get(LowWaterRecoveryManager.ASSET_ID)
+        if (
+            top_up_command is not None
+            and top_up_command.owner == CommandOwner.AUTO
+            and top_up_command.accepted
+            and top_up_command.final_on
         ):
             classification = Classification(
                 SystemState.CORRECTING,
@@ -252,6 +295,7 @@ class DigitalTwinRuntime:
             verification=list(self.verification.tasks),
             alarms=self.alarm_incidents.snapshot_alarms(),
             incidents=self.alarm_incidents.snapshot_incidents(),
+            water_recovery=self.low_water_recovery.status(self.policy),
         )
         latest_event = self.events.events[-1].sequence if self.events.events else 0
         self.historian.append(
@@ -264,6 +308,7 @@ class DigitalTwinRuntime:
     def capture_checkpoint(self):
         checkpoint = capture_runtime_checkpoint(self)
         checkpoint["alarm_incident_state"] = self.alarm_incidents.checkpoint_state()
+        checkpoint["low_water_recovery_state"] = self.low_water_recovery.checkpoint_state()
         return checkpoint
 
     def restore_checkpoint(self, checkpoint) -> None:
@@ -271,6 +316,11 @@ class DigitalTwinRuntime:
         self.validation = SensorValidationEngine(self.validation.policy)
         self.alarm_incidents.restore_checkpoint_state(
             checkpoint.get("alarm_incident_state")
+        )
+        self.low_water_recovery.restore_after_restart(
+            checkpoint.get("low_water_recovery_state"),
+            now=self.clock.current,
+            events=self.events,
         )
 
     def publish(self, snapshot: RuntimeSnapshot, *, after_sequence: int = 0):

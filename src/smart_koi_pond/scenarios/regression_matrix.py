@@ -126,10 +126,11 @@ V1_REGRESSION_MATRIX: tuple[RegressionCase, ...] = (
     ),
     RegressionCase(
         "low_water_autonomous_recovery",
-        GateStatus.HOLD,
-        "Low level is detected, but autonomous top-up requires governed hard-limit/interlock and "
-        "site evidence not yet implemented.",
-        "test_low_water_is_detected_without_fabricating_recovery",
+        GateStatus.PASS,
+        "Explicitly enabled simulation top-up uses validated level evidence, top-up-only action, "
+        "hard cutoff/runtime/gain caps, process-response verification, safety OFF, restart abort, "
+        "and lockout after failed or unsafe attempts; default policy remains disabled.",
+        "test_low_water_autonomous_recovery_is_interlocked_verified_and_fail_safe",
     ),
 )
 

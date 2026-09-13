@@ -18,12 +18,17 @@ class VerificationManager:
         values: dict[str, float | None],
         policy: SimulationControlPolicy,
     ) -> VerificationTask | None:
+        delay_seconds = policy.verification_delay_seconds
         if asset_id == "backup_aerator":
             parameter = "dissolved_oxygen_mg_l"
             minimum_delta = policy.do_verification_min_delta
         elif asset_id == "backup_pump":
             parameter = "circulation_flow_l_min"
             minimum_delta = policy.flow_verification_min_delta
+        elif asset_id == "top_up_valve" and policy.low_water_auto_recovery_enabled:
+            parameter = "water_level_pct"
+            minimum_delta = policy.water_level_verification_min_delta
+            delay_seconds = policy.low_water_verification_delay_seconds
         else:
             return None
 
@@ -37,7 +42,7 @@ class VerificationManager:
             parameter=parameter,
             baseline=baseline,
             minimum_delta=minimum_delta,
-            due_at=now + timedelta(seconds=policy.verification_delay_seconds),
+            due_at=now + timedelta(seconds=delay_seconds),
         )
         self.tasks.append(task)
         return task
