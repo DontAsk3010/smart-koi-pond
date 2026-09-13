@@ -26,6 +26,8 @@ class CirculationVisualState:
     primary: VisualAssetPath
     backup: VisualAssetPath
     active_route_ids: tuple[str, ...]
+    modeled_route_flows_l_min: dict[str, float]
+    route_flow_provenance: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -160,6 +162,33 @@ def _asset_path(
     )
 
 
+def _hydraulic_projection(
+    snapshot: RuntimeSnapshot | Mapping[str, Any],
+) -> tuple[dict[str, float], str, tuple[str, ...]]:
+    hydraulics = _get(snapshot, "hydraulics", {}) or {}
+    modeled = bool(_get(hydraulics, "per_route_flow_modeled", False))
+    routes = _get(hydraulics, "routes", {}) or {}
+    if not modeled or not isinstance(routes, Mapping):
+        return {}, "UNAVAILABLE", ("NO_PER_ROUTE_FLOW_METERING",)
+
+    route_flows = {
+        str(route_id): max(
+            0.0,
+            _number(_get(route_state, "effective_flow_l_min", 0.0)),
+        )
+        for route_id, route_state in routes.items()
+    }
+    provenance = _text(
+        _get(hydraulics, "profile_provenance"),
+        "MODELED",
+    )
+    return (
+        route_flows,
+        provenance,
+        ("PER_ROUTE_FLOW_MODELED_NOT_PHYSICALLY_METERED",),
+    )
+
+
 def project_process_visual(
     snapshot: RuntimeSnapshot | Mapping[str, Any],
 ) -> ProcessVisualState:
@@ -167,8 +196,7 @@ def project_process_visual(
 
     This projection never creates control decisions. It exposes only process motion that can
     be supported by the current runtime snapshot. Where the model does not provide a
-    quantitative state (for example sludge mass or backwash discharge rate), the projection
-    keeps that value unavailable rather than inventing it.
+    quantitative state, the projection keeps that value unavailable rather than inventing it.
     """
 
     pond = _get(snapshot, "pond_truth", {}) or {}
@@ -190,6 +218,9 @@ def project_process_visual(
         path.asset_id
         for path in (primary_pump, backup_pump)
         if path.motion_active
+    )
+    route_flows, route_provenance, route_limitations = _hydraulic_projection(
+        snapshot
     )
 
     primary_aerator = _asset_path(
@@ -260,6 +291,8 @@ def project_process_visual(
             primary=primary_pump,
             backup=backup_pump,
             active_route_ids=active_routes,
+            modeled_route_flows_l_min=route_flows,
+            route_flow_provenance=route_provenance,
         ),
         aeration=AerationVisualState(
             primary=primary_aerator,
@@ -281,7 +314,7 @@ def project_process_visual(
         active_alarm_codes=active_alarm_codes,
         limitations=(
             "NO_QUANTITATIVE_WASTE_OR_SLUDGE_MODEL",
-            "NO_PER_ROUTE_FLOW_METERING",
+            *route_limitations,
             "BACKWASH_DISCHARGE_RATE_NOT_MODELED",
         ),
     )

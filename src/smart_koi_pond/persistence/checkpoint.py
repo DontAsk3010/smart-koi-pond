@@ -96,6 +96,7 @@ def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
         "actuator_adapter_id": runtime.actuators.adapter_id,
         "sensor_adapter_state": _jsonable(runtime.sensors.checkpoint_state()),
         "actuator_adapter_state": _jsonable(runtime.actuators.checkpoint_state()),
+        "model_engineering_state": _jsonable(runtime.model.checkpoint_state()),
         "clock": {
             "current": runtime.clock.current.isoformat(),
             "acceleration": runtime.clock.acceleration,
@@ -356,6 +357,7 @@ def restore_checkpoint(
         raise ValueError("checkpoint config_version does not match runtime config_version")
 
     _restore_adapter_state(runtime, checkpoint)
+    runtime.model.restore_engineering_state(checkpoint.get("model_engineering_state"))
     runtime.run_id = str(checkpoint["run_id"])
     runtime.execution_mode = ExecutionMode(checkpoint["execution_mode"])
     runtime.validation_phase = ValidationPhase(

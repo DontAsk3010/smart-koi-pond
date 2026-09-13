@@ -15,6 +15,7 @@ from smart_koi_pond.control.validation import SensorValidationEngine
 from smart_koi_pond.control.verification import VerificationManager
 from smart_koi_pond.control.water_management import LowWaterRecoveryManager
 from smart_koi_pond.digital_twin.clock import SimulationClock
+from smart_koi_pond.digital_twin.hydraulics import PondDesignProfile
 from smart_koi_pond.digital_twin.model import PondModel
 from smart_koi_pond.domain.enums import (
     ActuatorSourceState,
@@ -635,6 +636,8 @@ class DigitalTwinRuntime:
             alarms=self.alarm_incidents.snapshot_alarms(),
             incidents=self.alarm_incidents.snapshot_incidents(),
             water_recovery=self.low_water_recovery.status(self.policy),
+            design_profile=self.model.design_profile_snapshot(),
+            hydraulics=self.model.hydraulic_snapshot(),
         )
         latest_event = self.events.events[-1].sequence if self.events.events else 0
         self.historian.append(
@@ -691,6 +694,56 @@ class DigitalTwinRuntime:
 
     def incident_evidence(self, incident_id: str):
         return self.alarm_incidents.evidence_for_incident(incident_id)
+
+    def configure_design_profile(
+        self,
+        profile: PondDesignProfile,
+        *,
+        actor: str = "engineering",
+    ) -> None:
+        before = self.model.design_profile_snapshot()
+        self.model.configure_design_profile(profile)
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "POND_DESIGN_PROFILE_RECALCULATED",
+            {
+                "actor": actor,
+                "before_profile_id": before.get("profile_id"),
+                "before_revision": before.get("revision"),
+                "after_profile_id": profile.profile_id,
+                "after_revision": profile.revision,
+                "effective_volume_l": profile.effective_volume_l,
+                "provenance": profile.provenance,
+                "dependent_recalculation_required": True,
+                "hardware_lock": False,
+            },
+        )
+
+    def set_hydraulic_restriction(
+        self,
+        route_id: str,
+        throughput_factor: float,
+        *,
+        actor: str = "engineering",
+    ) -> None:
+        before = (
+            self.model.hydraulics.route_restriction(route_id)
+            if self.model.hydraulics is not None
+            else None
+        )
+        self.model.set_hydraulic_restriction(route_id, throughput_factor)
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "HYDRAULIC_ROUTE_RESTRICTION_CHANGED",
+            {
+                "actor": actor,
+                "route_id": route_id,
+                "before": before,
+                "after": float(throughput_factor),
+            },
+        )
 
     def configure_module(
         self,

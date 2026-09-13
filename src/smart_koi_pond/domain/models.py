@@ -251,3 +251,5 @@ class RuntimeSnapshot:
     alarms: tuple[AlarmRecord, ...] = ()
     incidents: tuple[IncidentRecord, ...] = ()
     water_recovery: dict[str, Any] = field(default_factory=dict)
+    design_profile: dict[str, Any] = field(default_factory=dict)
+    hydraulics: dict[str, Any] = field(default_factory=dict)
