@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime / generated evidence
+artifacts/
+reports/generated/
+logs/
+*.log
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+secrets/
+
+# Local simulation scratch
+scratch/
+.tmp/
+tmp/
