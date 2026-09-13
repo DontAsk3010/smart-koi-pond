@@ -82,6 +82,15 @@ HYDRAULIC_PROFILE_MATRIX: tuple[HydraulicProfileCase, ...] = (
         ),
         "test_profile_keeps_design_assumption_provenance_explicit",
     ),
+    HydraulicProfileCase(
+        "hp_08_canonical_process_projection",
+        GateStatus.PASS,
+        (
+            "Modeled per-route hydraulic flow reaches the canonical process projection "
+            "with explicit design provenance and without claiming physical metering."
+        ),
+        "test_modeled_route_flow_reaches_canonical_process_projection",
+    ),
 )
 
 
