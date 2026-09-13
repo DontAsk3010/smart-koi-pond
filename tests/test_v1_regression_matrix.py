@@ -30,6 +30,8 @@ POLICY = SimulationControlPolicy(
     water_level_low_below=70.0,
     verification_delay_seconds=1.0,
     do_verification_min_delta=0.01,
+    temperature_watch_above=30.0,
+    temperature_emergency_above=32.0,
 )
 
 
@@ -173,6 +175,8 @@ def test_failed_correction_has_verification_and_incident_evidence() -> None:
         water_level_low_below=70.0,
         verification_delay_seconds=1.0,
         do_verification_min_delta=10.0,
+        temperature_watch_above=30.0,
+        temperature_emergency_above=32.0,
     )
     runtime = make_runtime(dissolved_oxygen=4.6, policy=policy)
     first = runtime.tick(0)
@@ -180,12 +184,10 @@ def test_failed_correction_has_verification_and_incident_evidence() -> None:
 
     second = runtime.tick(2)
     assert any(
-        task.status == VerificationStatus.FAILED_RESPONSE
-        for task in second.verification
+        task.status == VerificationStatus.FAILED_RESPONSE for task in second.verification
     )
     assert any(
-        alarm.condition_key.startswith("VERIFICATION:")
-        for alarm in second.alarms
+        alarm.condition_key.startswith("VERIFICATION:") for alarm in second.alarms
     )
     evidence = runtime.incident_evidence(second.incidents[0].incident_id)
     sequences = [event.sequence for event in evidence]
@@ -259,13 +261,17 @@ def test_historian_playback_preserves_point_in_time_runtime_truth() -> None:
     assert case("historian_playback_consistency").status == GateStatus.PASS
 
 
-def test_heat_wave_gap_is_explicitly_held() -> None:
+def test_heat_wave_is_classified_and_feeding_is_inhibited() -> None:
     runtime = make_runtime(ambient_temperature=40.0)
     snapshot = runtime.tick(6 * 3600)
 
-    assert snapshot.pond_truth.temperature_c > 30.0
-    assert snapshot.classification.state == SystemState.NORMAL
-    assert case("heat_wave_safety_classification").status == GateStatus.HOLD
+    assert snapshot.pond_truth.temperature_c >= POLICY.temperature_emergency_above
+    assert snapshot.classification.state == SystemState.EMERGENCY
+    assert "TEMPERATURE_EMERGENCY" in snapshot.classification.reasons
+    assert snapshot.commands["feeder"].accepted is True
+    assert snapshot.commands["feeder"].final_on is False
+    assert snapshot.incidents
+    assert case("heat_wave_safety_classification").status == GateStatus.PASS
 
 
 def test_stuck_sensor_discrimination_gap_is_explicitly_held() -> None:
@@ -313,5 +319,5 @@ def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> No
     }
     assert case_ids == required
     assert payload["end_to_end_gate"] == GateStatus.HOLD
-    assert payload["pass_count"] == 14
-    assert payload["hold_count"] == 4
+    assert payload["pass_count"] == 15
+    assert payload["hold_count"] == 3
