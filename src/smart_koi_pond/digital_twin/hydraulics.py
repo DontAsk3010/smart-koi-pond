@@ -5,12 +5,23 @@ from typing import Any
 
 
 class EngineeringProvenance(StrEnum):
-    DESIGN_ASSUMPTION = "DESIGN_ASSUMPTION"
+    USER_CONFIGURED_SCENARIO = "USER_CONFIGURED_SCENARIO"
     DATASHEET = "DATASHEET"
     CALCULATED = "CALCULATED"
-    ESTIMATED = "ESTIMATED"
     MEASURED = "MEASURED"
+    CALIBRATED = "CALIBRATED"
+    MANUAL_REFERENCE = "MANUAL_REFERENCE"
     UNAVAILABLE = "UNAVAILABLE"
+
+    @classmethod
+    def normalize(cls, value: str | "EngineeringProvenance") -> "EngineeringProvenance":
+        if isinstance(value, cls):
+            return value
+        legacy = {
+            "DESIGN_ASSUMPTION": cls.USER_CONFIGURED_SCENARIO,
+            "ESTIMATED": cls.CALCULATED,
+        }
+        return legacy.get(str(value), cls(str(value)))
 
 
 class HydraulicRouteRole(StrEnum):
@@ -26,7 +37,7 @@ class HydraulicRouteSpec:
     rated_flow_l_min: float
     role: HydraulicRouteRole = HydraulicRouteRole.PRIMARY
     base_throughput_factor: float = 1.0
-    provenance: EngineeringProvenance = EngineeringProvenance.DESIGN_ASSUMPTION
+    provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
 
     def __post_init__(self) -> None:
         if not self.route_id:
@@ -36,9 +47,7 @@ class HydraulicRouteSpec:
         if self.rated_flow_l_min < 0:
             raise ValueError("rated_flow_l_min must be non-negative")
         if not 0.0 <= self.base_throughput_factor <= 1.0:
-            raise ValueError(
-                "base_throughput_factor must be between 0.0 and 1.0"
-            )
+            raise ValueError("base_throughput_factor must be between 0.0 and 1.0")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "HydraulicRouteSpec":
@@ -46,17 +55,10 @@ class HydraulicRouteSpec:
             route_id=str(data["route_id"]),
             asset_id=str(data["asset_id"]),
             rated_flow_l_min=float(data["rated_flow_l_min"]),
-            role=HydraulicRouteRole(
-                data.get("role", HydraulicRouteRole.PRIMARY)
-            ),
-            base_throughput_factor=float(
-                data.get("base_throughput_factor", 1.0)
-            ),
-            provenance=EngineeringProvenance(
-                data.get(
-                    "provenance",
-                    EngineeringProvenance.DESIGN_ASSUMPTION,
-                )
+            role=HydraulicRouteRole(data.get("role", HydraulicRouteRole.PRIMARY)),
+            base_throughput_factor=float(data.get("base_throughput_factor", 1.0)),
+            provenance=EngineeringProvenance.normalize(
+                data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
             ),
         )
 
@@ -72,7 +74,7 @@ class PondDesignProfile:
     drain_flow_l_min: float | None = None
     biomass_kg: float | None = None
     feed_kg_per_day: float | None = None
-    provenance: EngineeringProvenance = EngineeringProvenance.DESIGN_ASSUMPTION
+    provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
 
     def __post_init__(self) -> None:
         if not self.profile_id:
@@ -82,9 +84,7 @@ class PondDesignProfile:
         if self.effective_volume_l <= 0:
             raise ValueError("effective_volume_l must be positive")
         if self.circulation_turnovers_per_hour_guide <= 0:
-            raise ValueError(
-                "circulation_turnovers_per_hour_guide must be positive"
-            )
+            raise ValueError("circulation_turnovers_per_hour_guide must be positive")
         if not self.routes:
             raise ValueError("at least one hydraulic route is required")
         route_ids = [route.route_id for route in self.routes]
@@ -99,9 +99,7 @@ class PondDesignProfile:
         for field_name in non_negative_fields:
             value = getattr(self, field_name)
             if value is not None and value < 0:
-                raise ValueError(
-                    f"{field_name} must be non-negative when provided"
-                )
+                raise ValueError(f"{field_name} must be non-negative when provided")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "PondDesignProfile":
@@ -112,9 +110,7 @@ class PondDesignProfile:
             circulation_turnovers_per_hour_guide=float(
                 data["circulation_turnovers_per_hour_guide"]
             ),
-            routes=tuple(
-                HydraulicRouteSpec.from_dict(item) for item in data["routes"]
-            ),
+            routes=tuple(HydraulicRouteSpec.from_dict(item) for item in data["routes"]),
             top_up_flow_l_min=(
                 float(data["top_up_flow_l_min"])
                 if data.get("top_up_flow_l_min") is not None
@@ -135,11 +131,8 @@ class PondDesignProfile:
                 if data.get("feed_kg_per_day") is not None
                 else None
             ),
-            provenance=EngineeringProvenance(
-                data.get(
-                    "provenance",
-                    EngineeringProvenance.DESIGN_ASSUMPTION,
-                )
+            provenance=EngineeringProvenance.normalize(
+                data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
             ),
         )
 
@@ -155,8 +148,9 @@ class PondDesignProfile:
 class HydraulicNetworkModel:
     """Deterministic, reconfigurable hydraulic model for simulation.
 
-    The model is profile-driven and gives process behavior plus capacity guidance
-    without claiming site calibration or forcing an exact hardware size.
+    The model is profile-driven and exposes calculated requirements separately from
+    declared equipment capacity. It does not infer that installed hardware is faulty,
+    oversized, undersized, or upgrade-required without evidence supporting that claim.
     """
 
     def __init__(self, profile: PondDesignProfile) -> None:
@@ -188,23 +182,16 @@ class HydraulicNetworkModel:
         existing = self._route_restrictions
         self.profile = profile
         self._route_restrictions = {
-            route.route_id: existing.get(route.route_id, 1.0)
-            for route in profile.routes
+            route.route_id: existing.get(route.route_id, 1.0) for route in profile.routes
         }
         self._last_state = self.evaluate({})
 
-    def set_route_restriction(
-        self,
-        route_id: str,
-        throughput_factor: float,
-    ) -> None:
+    def set_route_restriction(self, route_id: str, throughput_factor: float) -> None:
         if route_id not in {route.route_id for route in self.profile.routes}:
             raise KeyError(route_id)
         factor = float(throughput_factor)
         if not 0.0 <= factor <= 1.0:
-            raise ValueError(
-                "route throughput factor must be between 0.0 and 1.0"
-            )
+            raise ValueError("route throughput factor must be between 0.0 and 1.0")
         self._route_restrictions[route_id] = factor
 
     def route_restriction(self, route_id: str) -> float:
@@ -212,7 +199,7 @@ class HydraulicNetworkModel:
             raise KeyError(route_id)
         return self._route_restrictions[route_id]
 
-    def _design_capacity(self, role: HydraulicRouteRole) -> float:
+    def _declared_capacity(self, role: HydraulicRouteRole) -> float:
         return sum(
             route.rated_flow_l_min
             * route.base_throughput_factor
@@ -221,12 +208,12 @@ class HydraulicNetworkModel:
             if route.role == role
         )
 
-    def _capacity_status(self, capacity_l_min: float) -> str:
+    def _declared_capacity_status(self, capacity_l_min: float) -> str:
         if capacity_l_min <= 0:
             return "NOT_CONFIGURED"
         if capacity_l_min < self.required_circulation_flow_l_min:
-            return "BELOW_PROFILE_GUIDANCE"
-        return "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+            return "DECLARED_CAPACITY_BELOW_CALCULATED_REQUIREMENT"
+        return "DECLARED_CAPACITY_AT_OR_ABOVE_CALCULATED_REQUIREMENT"
 
     def evaluate(
         self,
@@ -259,13 +246,13 @@ class HydraulicNetworkModel:
         required = self.required_circulation_flow_l_min
         turnover = total_flow * 60.0 / self.profile.effective_volume_l
         active_status = (
-            "BELOW_PROFILE_GUIDANCE"
+            "FLOW_BELOW_CALCULATED_REQUIREMENT"
             if total_flow < required
-            else "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+            else "FLOW_AT_OR_ABOVE_CALCULATED_REQUIREMENT"
         )
-        primary_capacity = self._design_capacity(HydraulicRouteRole.PRIMARY)
-        backup_capacity = self._design_capacity(HydraulicRouteRole.BACKUP)
-        parallel_capacity = self._design_capacity(HydraulicRouteRole.PARALLEL)
+        primary_capacity = self._declared_capacity(HydraulicRouteRole.PRIMARY)
+        backup_capacity = self._declared_capacity(HydraulicRouteRole.BACKUP)
+        parallel_capacity = self._declared_capacity(HydraulicRouteRole.PARALLEL)
         state = {
             "profile_id": self.profile.profile_id,
             "profile_revision": self.profile.revision,
@@ -281,11 +268,12 @@ class HydraulicNetworkModel:
             "primary_design_capacity_l_min": primary_capacity,
             "backup_design_capacity_l_min": backup_capacity,
             "parallel_design_capacity_l_min": parallel_capacity,
-            "primary_capacity_status": self._capacity_status(primary_capacity),
-            "backup_capacity_status": self._capacity_status(backup_capacity),
-            "parallel_capacity_status": self._capacity_status(
-                parallel_capacity
-            ),
+            "primary_capacity_status": self._declared_capacity_status(primary_capacity),
+            "backup_capacity_status": self._declared_capacity_status(backup_capacity),
+            "parallel_capacity_status": self._declared_capacity_status(parallel_capacity),
+            "hardware_fault_conclusion": "NOT_ESTABLISHED",
+            "hardware_upgrade_required": False,
+            "hardware_assessment_requires_evidence": True,
             "sizing_advisory_is_mandatory_hardware_lock": False,
             "routes": route_states,
         }
@@ -304,14 +292,8 @@ class HydraulicNetworkModel:
         )
         if no_water_management_flow:
             return None
-        top_up = (self.profile.top_up_flow_l_min or 0.0) * max(
-            0.0,
-            top_up_effect,
-        )
-        drain = (self.profile.drain_flow_l_min or 0.0) * max(
-            0.0,
-            drain_effect,
-        )
+        top_up = (self.profile.top_up_flow_l_min or 0.0) * max(0.0, top_up_effect)
+        drain = (self.profile.drain_flow_l_min or 0.0) * max(0.0, drain_effect)
         net_l_per_hour = (top_up - drain) * 60.0
         return net_l_per_hour / self.profile.effective_volume_l * 100.0
 
