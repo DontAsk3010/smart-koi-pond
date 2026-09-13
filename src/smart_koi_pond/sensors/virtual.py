@@ -15,6 +15,7 @@ class VirtualSensorSuite:
     PARAMETER_MAP = {
         "temperature": "temperature_c",
         "do": "dissolved_oxygen_mg_l",
+        "do_reference": "dissolved_oxygen_mg_l",
         "ph": "ph",
         "water_level": "water_level_pct",
         "flow": "circulation_flow_l_min",
@@ -23,9 +24,13 @@ class VirtualSensorSuite:
     def __init__(self) -> None:
         self._faults: dict[str, SensorFault] = {}
         self._stuck_values: dict[str, float] = {}
-        self._availability_overrides: dict[str, AvailabilityState] = {}
+        self._availability_overrides: dict[str, AvailabilityState] = {
+            "do_reference": AvailabilityState.UNSUPPORTED,
+        }
 
     def set_fault(self, sensor_id: str, fault: SensorFault | None) -> None:
+        if sensor_id not in self.PARAMETER_MAP:
+            raise KeyError(sensor_id)
         if fault is None:
             self._faults.pop(sensor_id, None)
             self._stuck_values.pop(sensor_id, None)
