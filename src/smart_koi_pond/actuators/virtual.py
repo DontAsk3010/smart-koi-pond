@@ -11,6 +11,7 @@ class VirtualAsset:
     feedback_on: bool = False
     availability: AvailabilityState = AvailabilityState.AVAILABLE
     owner: CommandOwner = CommandOwner.AUTO
+    effectiveness: float = 1.0
 
 
 class VirtualActuatorBank:
@@ -38,8 +39,19 @@ class VirtualActuatorBank:
     def set_owner(self, asset_id: str, owner: CommandOwner) -> None:
         self.assets[asset_id].owner = owner
 
+    def set_effectiveness(self, asset_id: str, effectiveness: float) -> None:
+        if not 0.0 <= effectiveness <= 1.0:
+            raise ValueError("effectiveness must be between 0.0 and 1.0")
+        self.assets[asset_id].effectiveness = float(effectiveness)
+
     def feedback_map(self) -> dict[str, bool]:
         return {asset_id: asset.feedback_on for asset_id, asset in self.assets.items()}
+
+    def process_effect_map(self) -> dict[str, float]:
+        return {
+            asset_id: asset.effectiveness if asset.feedback_on else 0.0
+            for asset_id, asset in self.assets.items()
+        }
 
     def execute(self, command: ArbitratedCommand, timestamp: datetime) -> DeviceFeedback:
         asset = self.assets[command.asset_id]
@@ -51,4 +63,5 @@ class VirtualActuatorBank:
             feedback_on=asset.feedback_on,
             availability=asset.availability,
             timestamp=timestamp,
+            effectiveness=asset.effectiveness,
         )

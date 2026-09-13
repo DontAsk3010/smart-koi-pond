@@ -116,7 +116,7 @@ class DigitalTwinRuntime:
         self.clock.advance(seconds)
         now = self.clock.current
         simulated_seconds = (now - before).total_seconds()
-        self.model.step(simulated_seconds, self.actuators.feedback_map())
+        self.model.step(simulated_seconds, self.actuators.process_effect_map())
 
         raw = self.sensors.sample(self.model.state, now)
         validated = validate_all(raw)
@@ -212,6 +212,7 @@ class DigitalTwinRuntime:
                 owner=asset.owner,
                 availability=asset.availability,
                 feedback_on=asset.feedback_on,
+                effectiveness=asset.effectiveness,
             )
             for asset_id, asset in self.actuators.assets.items()
         }

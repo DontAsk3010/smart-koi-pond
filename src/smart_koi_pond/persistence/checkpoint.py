@@ -85,6 +85,7 @@ def capture_checkpoint(runtime: "DigitalTwinRuntime") -> dict[str, Any]:
                 "owner": asset.owner.value,
                 "availability": asset.availability.value,
                 "feedback_on": asset.feedback_on,
+                "effectiveness": asset.effectiveness,
             }
             for asset_id, asset in runtime.actuators.assets.items()
         },
@@ -298,6 +299,7 @@ def restore_checkpoint(
     for asset_id, state in saved_assets.items():
         runtime.actuators.set_availability(asset_id, AvailabilityState(state["availability"]))
         runtime.actuators.set_owner(asset_id, CommandOwner(state["owner"]))
+        runtime.actuators.set_effectiveness(asset_id, float(state.get("effectiveness", 1.0)))
         runtime.actuators.assets[asset_id].feedback_on = False
 
     _restore_event_log(runtime, checkpoint)

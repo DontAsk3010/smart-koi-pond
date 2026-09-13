@@ -84,6 +84,7 @@ class DeviceFeedback:
     feedback_on: bool
     availability: AvailabilityState
     timestamp: datetime
+    effectiveness: float = 1.0
 
 
 @dataclass(slots=True)
@@ -129,6 +130,7 @@ class AssetStatus:
     owner: CommandOwner
     availability: AvailabilityState
     feedback_on: bool
+    effectiveness: float = 1.0
 
 
 @dataclass(slots=True)

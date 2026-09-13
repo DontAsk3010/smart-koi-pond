@@ -119,10 +119,10 @@ V1_REGRESSION_MATRIX: tuple[RegressionCase, ...] = (
     ),
     RegressionCase(
         "partial_actuator_degradation",
-        GateStatus.HOLD,
-        "Virtual actuators currently expose binary feedback/availability, not partial "
-        "effectiveness.",
-        "test_partial_actuator_degradation_gap_is_explicitly_held",
+        GateStatus.PASS,
+        "Feedback ON is separated from process effectiveness; degraded output scales the pond "
+        "response and verification can fail despite positive device feedback.",
+        "test_partial_actuator_degradation_is_detected_by_process_verification",
     ),
     RegressionCase(
         "low_water_autonomous_recovery",
