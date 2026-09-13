@@ -117,8 +117,12 @@ class VirtualSensorSuite:
     def checkpoint_state(self) -> dict[str, Any]:
         return {
             "availability": {
-                sensor_id: availability.value
-                for sensor_id, availability in self._availability_overrides.items()
+                sensor_id: (
+                    self._availability_overrides[sensor_id].value
+                    if sensor_id in self._availability_overrides
+                    else None
+                )
+                for sensor_id in self.PARAMETER_MAP
             },
             "faults": {
                 sensor_id: {"mode": fault.mode, "value": fault.value}
@@ -136,7 +140,10 @@ class VirtualSensorSuite:
         if not state:
             return
         for sensor_id, availability in state.get("availability", {}).items():
-            self.set_availability(sensor_id, AvailabilityState(availability))
+            self.set_availability(
+                sensor_id,
+                AvailabilityState(availability) if availability is not None else None,
+            )
         for sensor_id, fault in state.get("faults", {}).items():
             self.set_fault(sensor_id, SensorFault(str(fault["mode"]), fault.get("value")))
         self._stuck_values = {
