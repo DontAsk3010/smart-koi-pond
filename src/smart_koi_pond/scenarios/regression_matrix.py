@@ -112,10 +112,10 @@ V1_REGRESSION_MATRIX: tuple[RegressionCase, ...] = (
     ),
     RegressionCase(
         "sensor_stuck_drift_discrimination",
-        GateStatus.HOLD,
-        "Plausibility-only validation cannot yet distinguish in-range stuck/drift from real water "
-        "movement without temporal/model/redundant corroboration.",
-        "test_stuck_sensor_discrimination_gap_is_explicitly_held",
+        GateStatus.PASS,
+        "Stateful validation uses temporal history plus an independently observable reference "
+        "source to reject persistent stuck/drift disagreement without hidden simulator truth.",
+        "test_sensor_reference_discriminates_real_fault_stuck_and_drift",
     ),
     RegressionCase(
         "partial_actuator_degradation",
