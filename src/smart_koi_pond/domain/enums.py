@@ -109,3 +109,23 @@ class EventType(StrEnum):
     ALARM = "ALARM"
     INCIDENT = "INCIDENT"
     RECOVERY = "RECOVERY"
+    CONFIGURATION = "CONFIGURATION"
+
+
+class BaselineStatus(StrEnum):
+    SATISFIED = "BASELINE_SATISFIED"
+    DEGRADED = "BASELINE_DEGRADED"
+    NOT_MET = "BASELINE_NOT_MET"
+
+
+class ModuleInstallationState(StrEnum):
+    INSTALLED = "INSTALLED"
+    NOT_INSTALLED = "NOT_INSTALLED"
+    UNSUPPORTED = "UNSUPPORTED"
+
+
+class ModuleOperationalState(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    DEGRADED = "DEGRADED"
+    NOT_AVAILABLE = "NOT_AVAILABLE"
+    DISABLED = "DISABLED"
