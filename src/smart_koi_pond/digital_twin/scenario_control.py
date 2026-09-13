@@ -132,7 +132,6 @@ class VirtualScenarioController:
         )
 
     def safe_runtime_reset(self, *, origin: str = "MANUAL") -> None:
-        checkpoint = self.runtime.capture_checkpoint()
         self._event(
             "SAFE_RUNTIME_RESET_REQUESTED",
             {"origin": origin, "stale_command_replay": False},
