@@ -70,7 +70,9 @@ def make_runtime() -> DigitalTwinRuntime:
             EnvironmentInputs(28.0, 0.2),
         ),
         POLICY,
-        clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
+        clock=SimulationClock.start(
+            datetime(2026, 1, 1, tzinfo=UTC)
+        ),
         config_version="hydraulic-profile-test-v1",
     )
     runtime.actuators.assets["main_pump"].feedback_on = True
@@ -83,20 +85,40 @@ def test_volume_change_recalculates_required_flow_without_hardware_rewrite() -> 
     runtime.configure_design_profile(profile(20_000.0, revision="r1"))
     first = runtime.tick(0.0)
 
-    assert first.hydraulics["required_circulation_flow_l_min"] == pytest.approx(333.333333)
-    assert first.hydraulics["total_effective_flow_l_min"] == pytest.approx(400.0)
-    assert first.hydraulics["achieved_turnovers_per_hour"] == pytest.approx(1.2)
-    assert first.hydraulics["active_flow_status"] == "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+    assert first.hydraulics[
+        "required_circulation_flow_l_min"
+    ] == pytest.approx(333.333333)
+    assert first.hydraulics[
+        "total_effective_flow_l_min"
+    ] == pytest.approx(400.0)
+    assert first.hydraulics[
+        "achieved_turnovers_per_hour"
+    ] == pytest.approx(1.2)
+    assert (
+        first.hydraulics["active_flow_status"]
+        == "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+    )
 
     runtime.configure_design_profile(profile(40_000.0, revision="r2"))
     second = runtime.tick(0.0)
 
-    assert second.hydraulics["required_circulation_flow_l_min"] == pytest.approx(666.666667)
-    assert second.hydraulics["total_effective_flow_l_min"] == pytest.approx(400.0)
-    assert second.hydraulics["achieved_turnovers_per_hour"] == pytest.approx(0.6)
-    assert second.hydraulics["active_flow_status"] == "BELOW_PROFILE_GUIDANCE"
+    assert second.hydraulics[
+        "required_circulation_flow_l_min"
+    ] == pytest.approx(666.666667)
+    assert second.hydraulics[
+        "total_effective_flow_l_min"
+    ] == pytest.approx(400.0)
+    assert second.hydraulics[
+        "achieved_turnovers_per_hour"
+    ] == pytest.approx(0.6)
+    assert second.hydraulics[
+        "active_flow_status"
+    ] == "BELOW_PROFILE_GUIDANCE"
     assert second.design_profile["revision"] == "r2"
-    assert any(event.code == "POND_DESIGN_PROFILE_RECALCULATED" for event in runtime.events.events)
+    assert any(
+        event.code == "POND_DESIGN_PROFILE_RECALCULATED"
+        for event in runtime.events.events
+    )
 
 
 def test_larger_candidate_pump_is_guidance_not_a_hardware_lock() -> None:
@@ -105,7 +127,10 @@ def test_larger_candidate_pump_is_guidance_not_a_hardware_lock() -> None:
     state = runtime.tick(0.0).hydraulics
 
     assert state["primary_design_capacity_l_min"] == pytest.approx(800.0)
-    assert state["primary_capacity_status"] == "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+    assert (
+        state["primary_capacity_status"]
+        == "MEETS_OR_EXCEEDS_PROFILE_GUIDANCE"
+    )
     assert state["sizing_advisory_is_mandatory_hardware_lock"] is False
 
 
@@ -118,8 +143,12 @@ def test_route_restriction_changes_effective_flow_and_turnover() -> None:
     route = snapshot.hydraulics["routes"]["main-circulation"]
     assert route["runtime_throughput_factor"] == pytest.approx(0.5)
     assert route["effective_flow_l_min"] == pytest.approx(200.0)
-    assert snapshot.hydraulics["total_effective_flow_l_min"] == pytest.approx(200.0)
-    assert snapshot.hydraulics["achieved_turnovers_per_hour"] == pytest.approx(0.6)
+    assert snapshot.hydraulics[
+        "total_effective_flow_l_min"
+    ] == pytest.approx(200.0)
+    assert snapshot.hydraulics[
+        "achieved_turnovers_per_hour"
+    ] == pytest.approx(0.6)
 
 
 def test_water_management_rate_recalculates_from_effective_volume() -> None:
@@ -143,33 +172,59 @@ def test_water_management_rate_recalculates_from_effective_volume() -> None:
 
 def test_checkpoint_preserves_profile_and_restriction_but_deenergizes_outputs() -> None:
     runtime = make_runtime()
-    runtime.configure_design_profile(profile(25_000.0, revision="checkpoint-r1"))
+    runtime.configure_design_profile(
+        profile(25_000.0, revision="checkpoint-r1")
+    )
     runtime.set_hydraulic_restriction("main-circulation", 0.6)
     checkpoint = runtime.capture_checkpoint()
 
     restored = make_runtime()
     restored.restore_checkpoint(checkpoint)
 
-    assert restored.model.design_profile_snapshot()["effective_volume_l"] == pytest.approx(25_000.0)
+    assert restored.model.design_profile_snapshot()[
+        "effective_volume_l"
+    ] == pytest.approx(25_000.0)
     assert restored.model.hydraulics is not None
-    assert restored.model.hydraulics.route_restriction("main-circulation") == pytest.approx(0.6)
-    assert all(not asset.feedback_on for asset in restored.actuators.assets.values())
+    assert restored.model.hydraulics.route_restriction(
+        "main-circulation"
+    ) == pytest.approx(0.6)
+    assert all(
+        not asset.feedback_on
+        for asset in restored.actuators.assets.values()
+    )
     assert restored.operating_mode == OperatingMode.RECOVERY_SYNC
 
 
-def test_engineering_service_can_reconfigure_profile_and_publish_recalculated_state() -> None:
+def test_engineering_service_can_reconfigure_profile_and_publish_state() -> None:
     service = RuntimeApplicationService(make_runtime())
-    payload = {"profile": profile(30_000.0, revision="service-r1").to_dict()}
+    payload = {
+        "profile": profile(
+            30_000.0,
+            revision="service-r1",
+        ).to_dict()
+    }
 
     with pytest.raises(PermissionError):
-        service.command("configure_design_profile", payload, role="operator")
+        service.command(
+            "configure_design_profile",
+            payload,
+            role="operator",
+        )
 
-    snapshot = service.command("configure_design_profile", payload, role="engineering")
+    snapshot = service.command(
+        "configure_design_profile",
+        payload,
+        role="engineering",
+    )
     publication = service.publication()
 
     assert snapshot.design_profile["revision"] == "service-r1"
-    assert publication["snapshot"]["design_profile"]["effective_volume_l"] == pytest.approx(30_000.0)
-    assert publication["snapshot"]["hydraulics"]["required_circulation_flow_l_min"] == pytest.approx(500.0)
+    assert publication["snapshot"]["design_profile"][
+        "effective_volume_l"
+    ] == pytest.approx(30_000.0)
+    assert publication["snapshot"]["hydraulics"][
+        "required_circulation_flow_l_min"
+    ] == pytest.approx(500.0)
 
 
 def test_profile_keeps_design_assumption_provenance_explicit() -> None:
@@ -177,6 +232,12 @@ def test_profile_keeps_design_assumption_provenance_explicit() -> None:
     runtime.configure_design_profile(profile(20_000.0))
     snapshot = runtime.tick(0.0)
 
-    assert snapshot.design_profile["provenance"] == "DESIGN_ASSUMPTION"
-    assert snapshot.hydraulics["profile_provenance"] == "DESIGN_ASSUMPTION"
-    assert snapshot.hydraulics["routes"]["main-circulation"]["provenance"] == "DESIGN_ASSUMPTION"
+    assert snapshot.design_profile[
+        "provenance"
+    ] == "DESIGN_ASSUMPTION"
+    assert snapshot.hydraulics[
+        "profile_provenance"
+    ] == "DESIGN_ASSUMPTION"
+    assert snapshot.hydraulics["routes"]["main-circulation"][
+        "provenance"
+    ] == "DESIGN_ASSUMPTION"
