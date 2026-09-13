@@ -119,7 +119,9 @@ class DigitalTwinRuntime:
     def _validate_io_contract(self, mode: ExecutionMode) -> None:
         mode = ExecutionMode(mode)
         if mode in {ExecutionMode.LIMITED_LIVE, ExecutionMode.FULL_LIVE}:
-            raise RuntimeError(f"execution mode is not authorized by the current gate: {mode.value}")
+            raise RuntimeError(
+                f"execution mode is not authorized by the current gate: {mode.value}"
+            )
 
         sensor_sources = self._sensor_sources()
         actuator_sources = self._actuator_sources()
@@ -342,14 +344,24 @@ class DigitalTwinRuntime:
     ) -> None:
         setter = getattr(self.sensors, "set_source", None)
         if setter is None:
-            raise RuntimeError("configured sensor adapter does not support per-sensor source switching")
+            raise RuntimeError(
+                "configured sensor adapter does not support per-sensor source switching"
+            )
         source = SensorSourceState(source)
-        if self.execution_mode == ExecutionMode.SIMULATION and source == SensorSourceState.REAL_SOURCE:
-            raise RuntimeError("REAL_SOURCE cannot be enabled while execution mode is SIMULATION")
+        if (
+            self.execution_mode == ExecutionMode.SIMULATION
+            and source == SensorSourceState.REAL_SOURCE
+        ):
+            raise RuntimeError(
+                "REAL_SOURCE cannot be enabled while execution mode is SIMULATION"
+            )
         before = SensorSourceState(self.sensors.source_for(sensor_id))
         if before == source:
             return
-        setter(sensor_id, source)
+        if source == SensorSourceState.REAL_SOURCE:
+            setter(sensor_id, source, not_before=self.clock.current)
+        else:
+            setter(sensor_id, source)
         try:
             self._validate_io_contract(self.execution_mode)
         except Exception:
@@ -381,10 +393,17 @@ class DigitalTwinRuntime:
     ) -> None:
         setter = getattr(self.actuators, "set_source", None)
         if setter is None:
-            raise RuntimeError("configured actuator adapter does not support per-asset source switching")
+            raise RuntimeError(
+                "configured actuator adapter does not support per-asset source switching"
+            )
         source = ActuatorSourceState(source)
-        if self.execution_mode == ExecutionMode.SIMULATION and source == ActuatorSourceState.REAL_ACTUATOR:
-            raise RuntimeError("REAL_ACTUATOR cannot be enabled while execution mode is SIMULATION")
+        if (
+            self.execution_mode == ExecutionMode.SIMULATION
+            and source == ActuatorSourceState.REAL_ACTUATOR
+        ):
+            raise RuntimeError(
+                "REAL_ACTUATOR cannot be enabled while execution mode is SIMULATION"
+            )
         before = ActuatorSourceState(self.actuators.source_for(asset_id))
         if before == source:
             return
