@@ -71,7 +71,8 @@ class BufferedRealSensorSuite:
         existing = self._device_ids.get(sensor_id)
         if existing is not None and existing != device_id:
             raise RuntimeError(
-                f"sensor identity already bound: {sensor_id} -> {existing}; start a new reconciled binding"
+                "sensor identity already bound: "
+                f"{sensor_id} -> {existing}; start a new reconciled binding"
             )
         self._device_ids[sensor_id] = device_id
 
@@ -91,7 +92,8 @@ class BufferedRealSensorSuite:
             raise RuntimeError(f"sensor has no governed device binding: {sensor_id}")
         if device_id != expected_device:
             raise RuntimeError(
-                f"sensor identity mismatch for {sensor_id}: expected {expected_device}, got {device_id}"
+                f"sensor identity mismatch for {sensor_id}: "
+                f"expected {expected_device}, got {device_id}"
             )
 
         previous = self._samples.get(sensor_id)
