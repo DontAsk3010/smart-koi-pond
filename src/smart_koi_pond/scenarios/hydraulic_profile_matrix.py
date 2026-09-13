@@ -24,7 +24,7 @@ HYDRAULIC_PROFILE_MATRIX: tuple[HydraulicProfileCase, ...] = (
         GateStatus.PASS,
         (
             "Changing effective pond volume automatically recalculates circulation "
-            "guidance and achieved turnover without rewriting hardware definitions."
+            "requirement and achieved turnover without rewriting hardware definitions."
         ),
         "test_volume_change_recalculates_required_flow_without_hardware_rewrite",
     ),
@@ -32,8 +32,9 @@ HYDRAULIC_PROFILE_MATRIX: tuple[HydraulicProfileCase, ...] = (
         "hp_02_sizing_advisory_not_lock",
         GateStatus.PASS,
         (
-            "Candidate circulation capacity is evaluated against profile guidance; "
-            "larger equipment is not rejected or turned into a hardware lock."
+            "Declared circulation capacity is compared with calculated pond requirement; "
+            "larger equipment is not rejected, and actual hardware fault/upgrade claims "
+            "remain unestablished without supporting evidence."
         ),
         "test_larger_candidate_pump_is_guidance_not_a_hardware_lock",
     ),
@@ -74,20 +75,20 @@ HYDRAULIC_PROFILE_MATRIX: tuple[HydraulicProfileCase, ...] = (
         "test_engineering_service_can_reconfigure_profile_and_publish_state",
     ),
     HydraulicProfileCase(
-        "hp_07_provenance",
+        "hp_07_explicit_input_provenance",
         GateStatus.PASS,
         (
-            "Virtual design values preserve DESIGN_ASSUMPTION provenance and are not "
-            "misrepresented as measured site facts."
+            "Configured virtual profile values carry explicit USER_CONFIGURED_SCENARIO "
+            "provenance rather than synthetic design-assumption provenance."
         ),
-        "test_profile_keeps_design_assumption_provenance_explicit",
+        "test_profile_uses_explicit_user_configured_provenance_not_design_assumption",
     ),
     HydraulicProfileCase(
         "hp_08_canonical_process_projection",
         GateStatus.PASS,
         (
             "Modeled per-route hydraulic flow reaches the canonical process projection "
-            "with explicit design provenance and without claiming physical metering."
+            "with explicit scenario provenance and without claiming physical metering."
         ),
         "test_modeled_route_flow_reaches_canonical_process_projection",
     ),
@@ -96,21 +97,18 @@ HYDRAULIC_PROFILE_MATRIX: tuple[HydraulicProfileCase, ...] = (
 
 def matrix_payload() -> dict[str, object]:
     cases = [asdict(case) for case in HYDRAULIC_PROFILE_MATRIX]
-    holds = [
-        case for case in cases if case["status"] == GateStatus.HOLD
-    ]
+    holds = [case for case in cases if case["status"] == GateStatus.HOLD]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "matrix": "SMART_KOI_POND_HYDRAULIC_PROFILE_FIDELITY_V1",
-        "hydraulic_profile_gate": (
-            GateStatus.HOLD if holds else GateStatus.PASS
-        ),
+        "hydraulic_profile_gate": GateStatus.HOLD if holds else GateStatus.PASS,
         "physical_validation_claimed": False,
         "hardware_sizing_mandatory_lock": False,
+        "hardware_fault_or_upgrade_conclusion_requires_evidence": True,
+        "synthetic_design_assumption_provenance_used": False,
+        "canonical_unit_system": "SI_METRIC_INDONESIA",
         "real_actuation_authorized": False,
-        "pass_count": sum(
-            case["status"] == GateStatus.PASS for case in cases
-        ),
+        "pass_count": sum(case["status"] == GateStatus.PASS for case in cases),
         "hold_count": len(holds),
         "cases": cases,
     }
