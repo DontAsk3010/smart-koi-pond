@@ -274,17 +274,51 @@ def test_heat_wave_is_classified_and_feeding_is_inhibited() -> None:
     assert case("heat_wave_safety_classification").status == GateStatus.PASS
 
 
-def test_stuck_sensor_discrimination_gap_is_explicitly_held() -> None:
-    runtime = make_runtime(dissolved_oxygen=6.0)
-    runtime.sensors.set_fault("do", SensorFault("stuck"))
-    runtime.tick(0)
-    runtime.model.set_truth("dissolved_oxygen_mg_l", 3.5)
-    snapshot = runtime.tick(0)
+def test_sensor_reference_discriminates_real_fault_stuck_and_drift() -> None:
+    stuck = make_runtime(dissolved_oxygen=6.0)
+    stuck.sensors.set_availability("do_reference", None)
+    stuck.tick(0)
+    stuck.sensors.set_fault("do", SensorFault("stuck"))
+    stuck.tick(0)
+    stuck.model.set_truth("dissolved_oxygen_mg_l", 3.5)
 
-    assert snapshot.validated["do"].value == 6.0
-    assert snapshot.validated["do"].quality == DataQuality.GOOD
-    assert snapshot.classification.state == SystemState.NORMAL
-    assert case("sensor_stuck_drift_discrimination").status == GateStatus.HOLD
+    pending = stuck.tick(0)
+    assert pending.validated["do"].quality == DataQuality.SUSPECT
+    assert pending.classification.state == SystemState.DEGRADED
+
+    detected_stuck = stuck.tick(0)
+    assert detected_stuck.validated["do"].sensor_id == "do_reference"
+    assert detected_stuck.validated["do"].value == 3.5
+    assert "PRIMARY_REJECTED:STUCK_SUSPECTED" in detected_stuck.validated["do"].reasons
+    assert detected_stuck.classification.state == SystemState.CORRECTING
+    assert detected_stuck.commands["backup_aerator"].final_on is True
+
+    drift = make_runtime(dissolved_oxygen=6.0)
+    drift.sensors.set_availability("do_reference", None)
+    drift.tick(0)
+    drift.sensors.set_fault("do", SensorFault("drift", 1.0))
+    first_drift = drift.tick(0)
+    assert first_drift.validated["do"].quality == DataQuality.SUSPECT
+    detected_drift = drift.tick(0)
+    assert detected_drift.validated["do"].sensor_id == "do_reference"
+    assert detected_drift.validated["do"].value == 6.0
+    assert (
+        "PRIMARY_REJECTED:DRIFT_OR_DISAGREEMENT_SUSPECTED"
+        in detected_drift.validated["do"].reasons
+    )
+    assert detected_drift.classification.state == SystemState.NORMAL
+
+    real_fault = make_runtime(dissolved_oxygen=6.0)
+    real_fault.sensors.set_availability("do_reference", None)
+    real_fault.tick(0)
+    real_fault.model.set_truth("dissolved_oxygen_mg_l", 3.5)
+    genuine = real_fault.tick(0)
+    assert genuine.validated["do"].sensor_id == "do"
+    assert genuine.validated["do"].quality == DataQuality.GOOD
+    assert "FALLBACK_REFERENCE" not in genuine.validated["do"].reasons
+    assert genuine.classification.state == SystemState.CORRECTING
+    assert genuine.commands["backup_aerator"].final_on is True
+    assert case("sensor_stuck_drift_discrimination").status == GateStatus.PASS
 
 
 def test_partial_actuator_degradation_is_detected_by_process_verification() -> None:
@@ -352,5 +386,5 @@ def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> No
     }
     assert case_ids == required
     assert payload["end_to_end_gate"] == GateStatus.HOLD
-    assert payload["pass_count"] == 16
-    assert payload["hold_count"] == 2
+    assert payload["pass_count"] == 17
+    assert payload["hold_count"] == 1
