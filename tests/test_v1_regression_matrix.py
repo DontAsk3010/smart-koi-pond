@@ -279,6 +279,7 @@ def test_sensor_reference_discriminates_real_fault_stuck_and_drift() -> None:
     stuck.sensors.set_availability("do_reference", None)
     stuck.tick(0)
     stuck.sensors.set_fault("do", SensorFault("stuck"))
+    stuck.tick(0)
     stuck.model.set_truth("dissolved_oxygen_mg_l", 3.5)
 
     pending = stuck.tick(0)
