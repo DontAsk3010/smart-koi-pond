@@ -8,12 +8,14 @@ from typing import Any
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import RuntimeSnapshot
+from smart_koi_pond.domain.process_visual import project_process_visual
 from smart_koi_pond.sensors.virtual import SensorFault
 
 _ROLE_LEVEL = {"viewer": 0, "operator": 1, "engineering": 2}
 _ACTION_LEVEL = {
     "pause": 1,
     "resume": 1,
+    "step": 1,
     "return_to_auto": 1,
     "restore_power": 1,
     "acknowledge_alarm": 1,
@@ -46,6 +48,12 @@ def _wire(value: Any) -> Any:
     return value
 
 
+def _with_process_visual(snapshot: dict[str, Any]) -> dict[str, Any]:
+    enriched = dict(snapshot)
+    enriched["process_visual"] = _wire(project_process_visual(snapshot))
+    return enriched
+
+
 class RuntimeApplicationService:
     """Thread-safe application boundary around the canonical Digital Twin runtime."""
 
@@ -73,18 +81,30 @@ class RuntimeApplicationService:
 
     def publication(self, *, after_sequence: int = 0) -> dict[str, Any]:
         with self._lock:
-            return self.runtime.publish(
+            publication = self.runtime.publish(
                 self._last_snapshot,
                 after_sequence=after_sequence,
             )
+            publication["snapshot"]["process_visual"] = _wire(
+                project_process_visual(self._last_snapshot)
+            )
+            publication["process_visual_schema_version"] = 1
+            return publication
 
     def history(self, *, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
-            return [_wire(frame) for frame in self.runtime.recent_history(limit)]
+            frames = []
+            for frame in self.runtime.recent_history(limit):
+                wired = _wire(frame)
+                wired["snapshot"] = _with_process_visual(wired["snapshot"])
+                frames.append(wired)
+            return frames
 
     def playback(self, frame_sequence: int) -> dict[str, Any]:
         with self._lock:
-            return _wire(self.runtime.playback_frame(frame_sequence))
+            frame = _wire(self.runtime.playback_frame(frame_sequence))
+            frame["snapshot"] = _with_process_visual(frame["snapshot"])
+            return frame
 
     def incident_evidence(self, incident_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -106,6 +126,18 @@ class RuntimeApplicationService:
             )
             raise PermissionError(f"role {role} is not authorized for {action}")
 
+    def _single_step_while_paused(self, simulation_seconds: float) -> None:
+        if not math.isfinite(simulation_seconds) or simulation_seconds <= 0:
+            raise ValueError("step seconds must be a positive finite number")
+        if not self.runtime.clock.paused:
+            raise RuntimeError("single-step requires the simulation to be paused")
+        acceleration = self.runtime.clock.acceleration
+        self.runtime.clock.advance(simulation_seconds / acceleration, force=True)
+        self.runtime.model.step(
+            simulation_seconds,
+            self.runtime.actuators.process_effect_map(),
+        )
+
     def command(
         self,
         action: str,
@@ -121,6 +153,10 @@ class RuntimeApplicationService:
                 self.runtime.clock.pause()
             elif action == "resume":
                 self.runtime.clock.resume()
+            elif action == "step":
+                self._single_step_while_paused(
+                    float(data.get("seconds", self.step_seconds))
+                )
             elif action == "set_acceleration":
                 value = float(data["value"])
                 if not math.isfinite(value) or value <= 0:

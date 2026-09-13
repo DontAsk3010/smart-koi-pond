@@ -3,13 +3,20 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from smart_koi_pond.dashboard.animated_pond_ui import (
+    ANIMATED_POND_SCRIPT,
+    ANIMATED_POND_STYLE,
+)
 from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.web_ui import INDEX_HTML
 
 COMPOSED_INDEX_HTML = INDEX_HTML.replace(
+    "</head>",
+    f"{ANIMATED_POND_STYLE}</head>",
+).replace(
     "</body>",
-    f"<script>{MODULAR_UI_SCRIPT}</script></body>",
+    f"<script>{MODULAR_UI_SCRIPT}</script><script>{ANIMATED_POND_SCRIPT}</script></body>",
 )
 
 
@@ -105,14 +112,13 @@ def _handler_type(service: RuntimeApplicationService):
                     raise ValueError("payload must be a JSON object")
                 role = self.headers.get("X-Koi-Role", "viewer").lower()
                 snapshot = service.command(action, payload, role=role)
+                if snapshot is not service.last_snapshot:
+                    raise RuntimeError("command snapshot is not the canonical current snapshot")
                 self._send_json(
                     {
                         "accepted": True,
                         "action": action,
-                        "publication": service.runtime.publish(
-                            snapshot,
-                            after_sequence=0,
-                        ),
+                        "publication": service.publication(after_sequence=0),
                     }
                 )
             except PermissionError as exc:
