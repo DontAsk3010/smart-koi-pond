@@ -21,6 +21,25 @@ def arbitrate(
     current_owner: CommandOwner,
     operating_mode: OperatingMode,
 ) -> ArbitratedCommand:
+    if intent.owner == CommandOwner.SAFETY:
+        if intent.requested_on:
+            return ArbitratedCommand(
+                intent.asset_id,
+                intent.requested_on,
+                False,
+                CommandOwner.SAFETY,
+                False,
+                "SAFETY_OWNER_CANNOT_ENERGIZE",
+            )
+        return ArbitratedCommand(
+            intent.asset_id,
+            intent.requested_on,
+            False,
+            CommandOwner.SAFETY,
+            True,
+            intent.reason,
+        )
+
     if intent.owner == CommandOwner.AUTO and current_owner != CommandOwner.AUTO:
         return ArbitratedCommand(
             intent.asset_id,
