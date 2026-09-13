@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 from smart_koi_pond.domain.models import RuntimeSnapshot
 
@@ -72,6 +74,8 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
 def _text(value: Any, default: str = "UNKNOWN") -> str:
     if value is None:
         return default
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, Enum):
         return str(value.value)
     return str(value)
@@ -83,7 +87,10 @@ def _number(value: Any, default: float = 0.0) -> float:
     return float(value)
 
 
-def _verification_status(snapshot: RuntimeSnapshot | Mapping[str, Any], asset_id: str) -> str | None:
+def _verification_status(
+    snapshot: RuntimeSnapshot | Mapping[str, Any],
+    asset_id: str,
+) -> str | None:
     tasks = _get(snapshot, "verification", ()) or ()
     statuses = [
         _text(_get(task, "status"), "")
@@ -124,7 +131,10 @@ def _asset_path(
         )
 
     feedback_on = bool(_get(asset, "feedback_on", False))
-    effectiveness = max(0.0, min(1.0, _number(_get(asset, "effectiveness", 1.0), 1.0)))
+    effectiveness = max(
+        0.0,
+        min(1.0, _number(_get(asset, "effectiveness", 1.0), 1.0)),
+    )
     availability = _text(_get(asset, "availability"))
     unavailable = availability in {
         "FAILED",
@@ -233,7 +243,10 @@ def project_process_visual(
         run_id=_text(_get(snapshot, "run_id"), ""),
         timestamp=_text(_get(snapshot, "timestamp"), ""),
         simulation_paused=bool(_get(snapshot, "simulation_paused", False)),
-        simulation_acceleration=_number(_get(snapshot, "simulation_acceleration", 1.0), 1.0),
+        simulation_acceleration=_number(
+            _get(snapshot, "simulation_acceleration", 1.0),
+            1.0,
+        ),
         classification=_text(_get(classification, "state")),
         operating_mode=_text(_get(snapshot, "operating_mode")),
         operating_phase=_text(_get(operating, "phase")),
@@ -254,7 +267,10 @@ def project_process_visual(
             active_source_ids=active_aeration,
         ),
         water_management=WaterManagementVisualState(
-            water_level_pct=max(0.0, min(100.0, _number(_get(pond, "water_level_pct", 0.0)))),
+            water_level_pct=max(
+                0.0,
+                min(100.0, _number(_get(pond, "water_level_pct", 0.0))),
+            ),
             top_up=top_up,
             drain=drain,
             backwash=backwash,
