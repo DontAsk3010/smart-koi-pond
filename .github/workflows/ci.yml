@@ -52,6 +52,11 @@ jobs:
           python scripts/animated_pond_matrix.py
           > artifacts/animated-pond-matrix-${{ matrix.python-version }}.json
 
+      - name: Build Simulation Exit SIL evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.sil_stress_matrix
+          --output artifacts/simulation-exit-sil-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -69,3 +74,9 @@ jobs:
         with:
           name: animated-pond-matrix-python-${{ matrix.python-version }}
           path: artifacts/animated-pond-matrix-${{ matrix.python-version }}.json
+
+      - name: Upload Simulation Exit SIL evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-exit-sil-python-${{ matrix.python-version }}
+          path: artifacts/simulation-exit-sil-${{ matrix.python-version }}.json
