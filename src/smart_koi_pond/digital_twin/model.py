@@ -1,5 +1,6 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from smart_koi_pond.digital_twin.hydraulics import HydraulicNetworkModel, PondDesignProfile
 from smart_koi_pond.domain.models import PondState
