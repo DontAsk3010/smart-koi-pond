@@ -219,8 +219,8 @@ def test_low_water_is_detected_without_fabricating_recovery() -> None:
     assert snapshot.classification.state == SystemState.DEGRADED
     assert "WATER_LEVEL_LOW" in snapshot.classification.reasons
     assert "top_up_valve" not in snapshot.commands
+    assert snapshot.water_recovery["enabled"] is False
     assert case("water_level_fault_detection").status == GateStatus.PASS
-    assert case("low_water_autonomous_recovery").status == GateStatus.HOLD
 
 
 def test_local_critical_control_has_no_supervisory_network_dependency() -> None:
@@ -360,7 +360,7 @@ def test_partial_actuator_degradation_is_detected_by_process_verification() -> N
     assert case("partial_actuator_degradation").status == GateStatus.PASS
 
 
-def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> None:
+def test_matrix_is_complete_and_end_to_end_gate_passes_only_when_all_gaps_close() -> None:
     payload = matrix_payload()
     case_ids = {item.case_id for item in V1_REGRESSION_MATRIX}
 
@@ -385,6 +385,6 @@ def test_matrix_is_complete_and_end_to_end_gate_is_hold_until_gaps_close() -> No
         "low_water_autonomous_recovery",
     }
     assert case_ids == required
-    assert payload["end_to_end_gate"] == GateStatus.HOLD
-    assert payload["pass_count"] == 17
-    assert payload["hold_count"] == 1
+    assert payload["end_to_end_gate"] == GateStatus.PASS
+    assert payload["pass_count"] == 18
+    assert payload["hold_count"] == 0
