@@ -25,11 +25,17 @@ FAULT_CONTROLS_UI_SCRIPT = r"""
           <option value="failed_off">Failed OFF</option>
           <option value="degraded">Degraded effectiveness</option>
         </select>
-        <input id="actuatorFaultValue" type="number" min="0" max="0.99" step="0.05" value="0.5" aria-label="Degraded effectiveness">
-        <button class="btn danger" type="button" id="injectActuatorFaultButton">Inject</button>
-        <button class="btn ok" type="button" id="repairActuatorButton">Repair / Clear</button>
+        <input id="actuatorFaultValue" type="number" min="0" max="0.99"
+          step="0.05" value="0.5" aria-label="Degraded effectiveness">
+        <button class="btn danger" type="button"
+          id="injectActuatorFaultButton">Inject</button>
+        <button class="btn ok" type="button"
+          id="repairActuatorButton">Repair / Clear</button>
       </div>
-      <div class="muted">Failed OFF removes process effect. Degraded mode preserves motion but reduces effectiveness.</div>`;
+      <div class="muted">
+        Failed OFF removes process effect. Degraded mode preserves motion
+        but reduces effectiveness.
+      </div>`;
 
     const recovery=document.createElement('div');
     recovery.id='safeRecoveryCard';
@@ -37,11 +43,17 @@ FAULT_CONTROLS_UI_SCRIPT = r"""
     recovery.innerHTML=`
       <div class="label">Safe Reset & Automatic Scenario</div>
       <div class="controls">
-        <button class="btn danger" type="button" id="safeRuntimeResetButton">Safe Runtime Reset</button>
-        <input id="autoFaultDelay" type="number" min="0" step="1" value="30" aria-label="Automatic fault delay in seconds">
-        <button class="btn" type="button" id="scheduleFaultButton">Schedule selected fault</button>
+        <button class="btn danger" type="button"
+          id="safeRuntimeResetButton">Safe Runtime Reset</button>
+        <input id="autoFaultDelay" type="number" min="0" step="1" value="30"
+          aria-label="Automatic fault delay in seconds">
+        <button class="btn" type="button"
+          id="scheduleFaultButton">Schedule selected fault</button>
       </div>
-      <div class="muted">Reset preserves simulated hardware faults, de-energizes outputs, and enters governed reconciliation. Automatic scheduling uses simulation time.</div>`;
+      <div class="muted">
+        Reset preserves simulated hardware faults, de-energizes outputs,
+        and enters governed reconciliation. Automatic scheduling uses simulation time.
+      </div>`;
 
     grid.appendChild(hardware);
     grid.appendChild(recovery);
@@ -50,12 +62,18 @@ FAULT_CONTROLS_UI_SCRIPT = r"""
       const asset=document.getElementById('faultAsset').value;
       const mode=document.getElementById('actuatorFaultMode').value;
       const payload={asset_id:asset,mode};
-      if(mode==='degraded')payload.value=Number(document.getElementById('actuatorFaultValue').value);
+      if(mode==='degraded'){
+        payload.value=Number(document.getElementById('actuatorFaultValue').value);
+      }
       sendCommand('inject_actuator_fault',payload,'engineering');
     });
 
     document.getElementById('repairActuatorButton').addEventListener('click',()=>{
-      sendCommand('clear_actuator_fault',{asset_id:document.getElementById('faultAsset').value},'engineering');
+      sendCommand(
+        'clear_actuator_fault',
+        {asset_id:document.getElementById('faultAsset').value},
+        'engineering'
+      );
     });
 
     document.getElementById('safeRuntimeResetButton').addEventListener('click',()=>{
@@ -66,7 +84,9 @@ FAULT_CONTROLS_UI_SCRIPT = r"""
       const asset=document.getElementById('faultAsset').value;
       const mode=document.getElementById('actuatorFaultMode').value;
       const scenarioPayload={asset_id:asset,mode};
-      if(mode==='degraded')scenarioPayload.value=Number(document.getElementById('actuatorFaultValue').value);
+      if(mode==='degraded'){
+        scenarioPayload.value=Number(document.getElementById('actuatorFaultValue').value);
+      }
       sendCommand('schedule_scenario_trigger',{
         scenario_action:'inject_actuator_fault',
         scenario_payload:scenarioPayload,
