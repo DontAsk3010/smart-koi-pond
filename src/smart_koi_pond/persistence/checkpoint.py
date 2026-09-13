@@ -18,7 +18,6 @@ from smart_koi_pond.domain.enums import (
     WorkflowPhase,
 )
 from smart_koi_pond.domain.models import EventRecord, VerificationTask
-from smart_koi_pond.sensors.virtual import SensorFault
 
 if TYPE_CHECKING:
     from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
@@ -231,6 +230,24 @@ def _safe_restart_availability(
     return requested
 
 
+def _safe_session_restore(
+    runtime: "DigitalTwinRuntime",
+    session: _OperatingSession,
+) -> _OperatingSession:
+    session.asset_restore = {
+        asset_id: _AssetRestoreState(
+            owner=state.owner,
+            availability=_safe_restart_availability(
+                runtime,
+                asset_id,
+                state.availability,
+            ),
+        )
+        for asset_id, state in session.asset_restore.items()
+    }
+    return session
+
+
 def _enter_restart_gate(
     runtime: "DigitalTwinRuntime",
     saved_session: _OperatingSession | None,
@@ -269,13 +286,7 @@ def _enter_restart_gate(
         )
         return
 
-    for asset_id, state in saved_session.asset_restore.items():
-        state.availability = _safe_restart_availability(
-            runtime,
-            asset_id,
-            state.availability,
-        )
-
+    saved_session = _safe_session_restore(runtime, saved_session)
     if saved_session.origin_mode == OperatingMode.BLACKOUT_RECOVERY:
         for asset_id, state in saved_session.asset_restore.items():
             runtime.actuators.set_availability(asset_id, state.availability)
