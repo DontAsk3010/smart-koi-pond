@@ -48,7 +48,8 @@ class SimulationControlPolicy:
                 )
             if self.water_level_hard_high_cutoff is None:
                 raise ValueError(
-                    "water_level_hard_high_cutoff is required when low-water auto recovery is enabled"
+                    "water_level_hard_high_cutoff is required when "
+                    "low-water auto recovery is enabled"
                 )
             if not (
                 self.water_level_low_below
