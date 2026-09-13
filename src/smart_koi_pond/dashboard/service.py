@@ -4,6 +4,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
@@ -244,7 +245,7 @@ class RuntimeApplicationService:
                 trigger = ScenarioTrigger(
                     action=str(data["scenario_action"]),
                     payload=dict(data.get("scenario_payload", {})),
-                    trigger_id=str(data.get("trigger_id") or ScenarioTrigger("", {}).trigger_id),
+                    trigger_id=str(data.get("trigger_id") or uuid4()),
                     after_seconds=(
                         float(data["after_seconds"])
                         if data.get("after_seconds") is not None
