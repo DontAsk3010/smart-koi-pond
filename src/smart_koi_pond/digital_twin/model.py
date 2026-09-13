@@ -46,22 +46,36 @@ class PondModel:
         else:
             raise KeyError(parameter)
 
-    def step(self, seconds: float, feedback_on: dict[str, bool]) -> PondState:
+    @staticmethod
+    def _effect(actuator_effects: dict[str, float | bool], asset_id: str) -> float:
+        value = actuator_effects.get(asset_id, 0.0)
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        return min(1.0, max(0.0, float(value)))
+
+    def step(
+        self,
+        seconds: float,
+        actuator_effects: dict[str, float | bool],
+    ) -> PondState:
         hours = seconds / 3600.0
         e = self.effects
 
-        flow = 0.0
-        if feedback_on.get("main_pump", False):
-            flow += e.main_pump_flow_l_min
-        if feedback_on.get("backup_pump", False):
-            flow += e.backup_pump_flow_l_min
-        self.state.circulation_flow_l_min = flow
+        main_pump_effect = self._effect(actuator_effects, "main_pump")
+        backup_pump_effect = self._effect(actuator_effects, "backup_pump")
+        primary_aerator_effect = self._effect(actuator_effects, "primary_aerator")
+        backup_aerator_effect = self._effect(actuator_effects, "backup_aerator")
+        top_up_effect = self._effect(actuator_effects, "top_up_valve")
+        drain_effect = self._effect(actuator_effects, "drain_valve")
+
+        self.state.circulation_flow_l_min = (
+            e.main_pump_flow_l_min * main_pump_effect
+            + e.backup_pump_flow_l_min * backup_pump_effect
+        )
 
         do_delta = -self.environment.oxygen_demand_mg_l_per_hour
-        if feedback_on.get("primary_aerator", False):
-            do_delta += e.primary_aerator_gain_mg_l_per_hour
-        if feedback_on.get("backup_aerator", False):
-            do_delta += e.backup_aerator_gain_mg_l_per_hour
+        do_delta += e.primary_aerator_gain_mg_l_per_hour * primary_aerator_effect
+        do_delta += e.backup_aerator_gain_mg_l_per_hour * backup_aerator_effect
         self.state.dissolved_oxygen_mg_l = max(
             0.0, self.state.dissolved_oxygen_mg_l + do_delta * hours
         )
@@ -72,10 +86,8 @@ class PondModel:
         self.state.temperature_c += temp_delta * hours
 
         level_delta = -self.environment.leak_pct_per_hour
-        if feedback_on.get("top_up_valve", False):
-            level_delta += e.top_up_gain_pct_per_hour
-        if feedback_on.get("drain_valve", False):
-            level_delta -= e.drain_loss_pct_per_hour
+        level_delta += e.top_up_gain_pct_per_hour * top_up_effect
+        level_delta -= e.drain_loss_pct_per_hour * drain_effect
         next_level = self.state.water_level_pct + level_delta * hours
         self.state.water_level_pct = min(100.0, max(0.0, next_level))
         return self.state
