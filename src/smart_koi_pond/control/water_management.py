@@ -293,20 +293,6 @@ class LowWaterRecoveryManager:
                 )
             ]
 
-        if level >= attempt.target_level_pct:
-            attempt.target_reached = True
-            self._append(
-                events,
-                now,
-                "LOW_WATER_RECOVERY_TARGET_REACHED",
-                {
-                    "attempt_id": attempt.attempt_id,
-                    "level_pct": level,
-                    "response_verified": attempt.response_verified,
-                },
-            )
-            return [self._safety_off("TARGET_REACHED")]
-
         if level >= attempt.hard_high_cutoff_pct:
             return [
                 self._abort(
@@ -338,6 +324,20 @@ class LowWaterRecoveryManager:
                     events=events,
                 )
             ]
+
+        if level >= attempt.target_level_pct:
+            attempt.target_reached = True
+            self._append(
+                events,
+                now,
+                "LOW_WATER_RECOVERY_TARGET_REACHED",
+                {
+                    "attempt_id": attempt.attempt_id,
+                    "level_pct": level,
+                    "response_verified": attempt.response_verified,
+                },
+            )
+            return [self._safety_off("TARGET_REACHED")]
 
         return [
             CommandIntent(
