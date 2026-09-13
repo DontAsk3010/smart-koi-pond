@@ -5,11 +5,14 @@ from typing import Any
 from .enums import (
     AlarmLifecycle,
     AvailabilityState,
+    BaselineStatus,
     CommandOwner,
     DataQuality,
     EventType,
     ExecutionMode,
     IncidentLifecycle,
+    ModuleInstallationState,
+    ModuleOperationalState,
     OperatingMode,
     SystemState,
     VerificationStatus,
@@ -109,11 +112,49 @@ class EventRecord:
 
 
 @dataclass(slots=True, frozen=True)
+class CapabilityProfile:
+    profile_id: str
+    package_label: str
+    required_capabilities: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class ModuleStatus:
+    module_id: str
+    installation_state: ModuleInstallationState
+    operational_state: ModuleOperationalState
+    capabilities_provided: tuple[str, ...]
+    reasons: tuple[str, ...] = ()
+    sensor_ids: tuple[str, ...] = ()
+    asset_ids: tuple[str, ...] = ()
+
+
+@dataclass(slots=True, frozen=True)
+class BaselineAssessment:
+    status: BaselineStatus
+    required_capabilities: tuple[str, ...]
+    satisfied_capabilities: tuple[str, ...] = ()
+    degraded_capabilities: tuple[str, ...] = ()
+    missing_capabilities: tuple[str, ...] = ()
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(slots=True, frozen=True)
+class CapabilityRegistrySnapshot:
+    profile_id: str
+    package_label: str
+    available_capabilities: tuple[str, ...]
+    modules: dict[str, ModuleStatus]
+    baseline: BaselineAssessment
+
+
+@dataclass(slots=True, frozen=True)
 class CapabilitySummary:
     circulation_paths_available: int
     aeration_paths_available: int
     degraded_reasons: tuple[str, ...] = ()
     critical_capability_lost: bool = False
+    registry: CapabilityRegistrySnapshot | None = None
 
 
 @dataclass(slots=True, frozen=True)

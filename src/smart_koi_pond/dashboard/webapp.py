@@ -3,8 +3,14 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.web_ui import INDEX_HTML
+
+COMPOSED_INDEX_HTML = INDEX_HTML.replace(
+    "</body>",
+    f"<script>{MODULAR_UI_SCRIPT}</script></body>",
+)
 
 
 def _handler_type(service: RuntimeApplicationService):
@@ -23,7 +29,7 @@ def _handler_type(service: RuntimeApplicationService):
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path == "/":
-                body = INDEX_HTML.encode("utf-8")
+                body = COMPOSED_INDEX_HTML.encode("utf-8")
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -33,11 +39,16 @@ def _handler_type(service: RuntimeApplicationService):
                 return
 
             if parsed.path == "/api/health":
+                snapshot = service.last_snapshot
+                registry = snapshot.capability.registry
                 self._send_json(
                     {
                         "status": "ok",
-                        "execution_mode": service.last_snapshot.execution_mode,
-                        "run_id": service.last_snapshot.run_id,
+                        "execution_mode": snapshot.execution_mode,
+                        "run_id": snapshot.run_id,
+                        "baseline_status": (
+                            registry.baseline.status if registry is not None else None
+                        ),
                     }
                 )
                 return

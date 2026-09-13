@@ -2,6 +2,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 from smart_koi_pond.actuators.virtual import VirtualActuatorBank
+from smart_koi_pond.capabilities.registry import CapabilityRegistry
 from smart_koi_pond.control.arbitration import arbitrate
 from smart_koi_pond.control.engine import (
     SimulationControlPolicy,
@@ -16,14 +17,18 @@ from smart_koi_pond.control.water_management import LowWaterRecoveryManager
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import PondModel
 from smart_koi_pond.domain.enums import (
+    AvailabilityState,
+    BaselineStatus,
     CommandOwner,
     EventType,
     ExecutionMode,
+    ModuleInstallationState,
     OperatingMode,
     SystemState,
 )
 from smart_koi_pond.domain.models import (
     AssetStatus,
+    CapabilityProfile,
     CapabilitySummary,
     Classification,
     CommandIntent,
@@ -52,6 +57,9 @@ class DigitalTwinRuntime:
         run_id: str | None = None,
         config_version: str = "simulation-policy-v1",
         historian_path: str | None = None,
+        capability_profile: CapabilityProfile | None = None,
+        module_installation: dict[str, ModuleInstallationState | str] | None = None,
+        module_enabled: dict[str, bool] | None = None,
     ) -> None:
         self.model = model
         self.policy = policy
@@ -69,27 +77,78 @@ class DigitalTwinRuntime:
         self.alarm_incidents = AlarmIncidentManager(self.events)
         self.historian = RuntimeHistorian(historian_path)
         self.publisher = CanonicalRuntimePublisher()
+        self.capability_registry = CapabilityRegistry(
+            profile=capability_profile,
+            module_installation=module_installation,
+            module_enabled=module_enabled,
+        )
+        self._sync_structural_module_state()
         self._last_feedback = self.actuators.feedback_map()
 
     @property
     def operating_mode(self) -> OperatingMode:
         return self.modes.mode
 
+    def _sync_structural_module_state(self) -> None:
+        for module_id, manifest in self.capability_registry.manifests.items():
+            config = self.capability_registry.configuration_for(module_id)
+            installed = config["installation_state"] == ModuleInstallationState.INSTALLED
+            for sensor_id in manifest.sensor_ids:
+                override = self.sensors.availability_override(sensor_id)
+                if installed:
+                    if override == AvailabilityState.UNSUPPORTED:
+                        self.sensors.set_availability(sensor_id, None)
+                else:
+                    self.sensors.set_availability(sensor_id, AvailabilityState.UNSUPPORTED)
+            for asset_id in manifest.asset_ids:
+                asset = self.actuators.assets.get(asset_id)
+                if asset is None:
+                    continue
+                if installed:
+                    if asset.availability == AvailabilityState.UNSUPPORTED:
+                        self.actuators.set_availability(asset_id, AvailabilityState.AVAILABLE)
+                else:
+                    self.actuators.set_availability(asset_id, AvailabilityState.UNSUPPORTED)
+
+    def _registry_snapshot(self, validated):
+        return self.capability_registry.evaluate(
+            validated=validated,
+            actuators=self.actuators,
+            feature_flags={
+                "auto_top_up": self.policy.low_water_auto_recovery_enabled,
+            },
+        )
+
     def _apply_capability(
         self,
         classification: Classification,
+        validated,
     ) -> tuple[Classification, CapabilitySummary]:
         capability = assess_capability(self.actuators)
+        registry = self._registry_snapshot(validated)
         reasons = list(classification.reasons)
         reasons.extend(
             reason for reason in capability.degraded_reasons if reason not in reasons
         )
+        reasons.extend(
+            reason for reason in registry.baseline.reasons if reason not in reasons
+        )
         state = classification.state
         if capability.critical_capability_lost:
             state = SystemState.FAILSAFE
-        elif capability.degraded_reasons and state == SystemState.NORMAL:
+        elif (
+            capability.degraded_reasons
+            or registry.baseline.status != BaselineStatus.SATISFIED
+        ) and state == SystemState.NORMAL:
             state = SystemState.DEGRADED
-        return Classification(state, tuple(reasons)), capability
+        summary = replace(
+            capability,
+            degraded_reasons=tuple(
+                dict.fromkeys((*capability.degraded_reasons, *registry.baseline.reasons))
+            ),
+            registry=registry,
+        )
+        return Classification(state, tuple(reasons)), summary
 
     def _execute_intent(self, intent: CommandIntent, now):
         asset = self.actuators.assets[intent.asset_id]
@@ -113,6 +172,21 @@ class DigitalTwinRuntime:
             },
         )
         return command, device_feedback
+
+    def _intent_is_configured(self, intent: CommandIntent, now) -> bool:
+        if self.capability_registry.asset_is_configured(intent.asset_id):
+            return True
+        self.events.append(
+            now,
+            EventType.COMMAND,
+            "COMMAND_INHIBITED_MODULE_NOT_CONFIGURED",
+            {
+                "asset_id": intent.asset_id,
+                "owner": intent.owner,
+                "reason": intent.reason,
+            },
+        )
+        return False
 
     def tick(self, seconds: float) -> RuntimeSnapshot:
         before = self.clock.current
@@ -140,7 +214,7 @@ class DigitalTwinRuntime:
         classification = classify(estimate, self.policy)
 
         self.modes.advance_phase(now, validated)
-        classification, capability = self._apply_capability(classification)
+        classification, capability = self._apply_capability(classification, validated)
 
         completed = self.verification.evaluate(now, estimate.values)
         for task in completed:
@@ -160,14 +234,18 @@ class DigitalTwinRuntime:
         commands = {}
         feedback = {}
         auto_intents = decide(estimate, classification, self.policy)
-        water_intents = self.low_water_recovery.plan(
-            now=now,
-            estimate=estimate,
-            operating_mode=self.operating_mode,
-            actuators=self.actuators,
-            completed_verifications=completed,
-            policy=self.policy,
-            events=self.events,
+        water_intents = (
+            self.low_water_recovery.plan(
+                now=now,
+                estimate=estimate,
+                operating_mode=self.operating_mode,
+                actuators=self.actuators,
+                completed_verifications=completed,
+                policy=self.policy,
+                events=self.events,
+            )
+            if self.capability_registry.structurally_enabled("auto_top_up")
+            else []
         )
         workflow_intents = self.modes.command_intents()
         ordinary_water_intents = [
@@ -184,6 +262,8 @@ class DigitalTwinRuntime:
             *safety_water_intents,
         ]
         for intent in all_intents:
+            if not self._intent_is_configured(intent, now):
+                continue
             command, device_feedback = self._execute_intent(intent, now)
             commands[intent.asset_id] = command
             feedback[intent.asset_id] = device_feedback
@@ -225,7 +305,7 @@ class DigitalTwinRuntime:
         self._last_feedback = self.actuators.feedback_map()
 
         if self.modes.complete_recovery_if_ready(now, validated):
-            classification, capability = self._apply_capability(classification)
+            classification, capability = self._apply_capability(classification, validated)
 
         if classification.state in {SystemState.WATCH, SystemState.EMERGENCY} and any(
             command.owner == CommandOwner.AUTO
@@ -258,21 +338,26 @@ class DigitalTwinRuntime:
                 "reasons": classification.reasons,
                 "operating_mode": self.operating_mode,
                 "operating_phase": self.modes.phase,
+                "baseline_status": (
+                    capability.registry.baseline.status
+                    if capability.registry is not None
+                    else None
+                ),
             },
         )
 
         self.alarm_incidents.update(now, classification, completed)
 
-        assets = {
-            asset_id: AssetStatus(
+        assets = {}
+        for asset_id, asset in self.actuators.assets.items():
+            configured = self.capability_registry.asset_is_configured(asset_id)
+            assets[asset_id] = AssetStatus(
                 asset_id=asset_id,
                 owner=asset.owner,
-                availability=asset.availability,
-                feedback_on=asset.feedback_on,
+                availability=(asset.availability if configured else AvailabilityState.UNSUPPORTED),
+                feedback_on=asset.feedback_on if configured else False,
                 effectiveness=asset.effectiveness,
             )
-            for asset_id, asset in self.actuators.assets.items()
-        }
 
         snapshot = RuntimeSnapshot(
             timestamp=now,
@@ -309,10 +394,13 @@ class DigitalTwinRuntime:
         checkpoint = capture_runtime_checkpoint(self)
         checkpoint["alarm_incident_state"] = self.alarm_incidents.checkpoint_state()
         checkpoint["low_water_recovery_state"] = self.low_water_recovery.checkpoint_state()
+        checkpoint["capability_registry_state"] = self.capability_registry.checkpoint_state()
         return checkpoint
 
     def restore_checkpoint(self, checkpoint) -> None:
         restore_runtime_checkpoint(self, checkpoint)
+        self.capability_registry.restore_state(checkpoint.get("capability_registry_state"))
+        self._sync_structural_module_state()
         self.validation = SensorValidationEngine(self.validation.policy)
         self.alarm_incidents.restore_checkpoint_state(
             checkpoint.get("alarm_incident_state")
@@ -348,6 +436,57 @@ class DigitalTwinRuntime:
 
     def incident_evidence(self, incident_id: str):
         return self.alarm_incidents.evidence_for_incident(incident_id)
+
+    def configure_module(
+        self,
+        module_id: str,
+        *,
+        installation_state: ModuleInstallationState | str | None = None,
+        enabled: bool | None = None,
+        actor: str = "engineering",
+    ) -> None:
+        manifest = self.capability_registry.manifests.get(module_id)
+        if manifest is None:
+            raise KeyError(f"unknown module: {module_id}")
+        if (
+            installation_state is not None
+            and ModuleInstallationState(installation_state)
+            != ModuleInstallationState.INSTALLED
+        ):
+            running = [
+                asset_id
+                for asset_id in manifest.asset_ids
+                if self.actuators.assets.get(asset_id) is not None
+                and self.actuators.assets[asset_id].feedback_on
+            ]
+            if running:
+                raise RuntimeError(
+                    "module assets must be safely OFF before removal: " + ", ".join(running)
+                )
+
+        before = self.capability_registry.configuration_for(module_id)
+        self.capability_registry.configure(
+            module_id,
+            installation_state=installation_state,
+            enabled=enabled,
+        )
+        self._sync_structural_module_state()
+        after = self.capability_registry.configuration_for(module_id)
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "MODULE_CONFIGURATION_CHANGED",
+            {
+                "module_id": module_id,
+                "actor": actor,
+                "before": before,
+                "after": after,
+            },
+        )
+
+    def _require_structural_capability(self, capability: str) -> None:
+        if not self.capability_registry.capability_structurally_enabled(capability):
+            raise RuntimeError(f"required capability is not configured: {capability}")
 
     def start_manual_maintenance(
         self,
@@ -388,6 +527,7 @@ class DigitalTwinRuntime:
         target_drain_level_pct: float,
         target_refill_level_pct: float,
     ) -> None:
+        self._require_structural_capability("automation.water_change")
         self.modes.start_water_change(
             reason,
             self.clock.current,
@@ -396,6 +536,7 @@ class DigitalTwinRuntime:
         )
 
     def start_filter_clean(self, service_scope, reason: str) -> None:
+        self._require_structural_capability("automation.filter_clean")
         self.modes.start_filter_clean(service_scope, reason, self.clock.current)
 
     def start_blackout(self, reason: str) -> None:
@@ -408,6 +549,8 @@ class DigitalTwinRuntime:
         self.modes.request_return_to_auto(self.clock.current)
 
     def manual_command(self, asset_id: str, on: bool, reason: str):
+        if not self.capability_registry.asset_is_configured(asset_id):
+            raise RuntimeError(f"asset module is not configured: {asset_id}")
         asset = self.actuators.assets[asset_id]
         if asset.owner not in {CommandOwner.MANUAL, CommandOwner.MAINTENANCE}:
             raise RuntimeError(f"asset is not under manual ownership: {asset_id}")

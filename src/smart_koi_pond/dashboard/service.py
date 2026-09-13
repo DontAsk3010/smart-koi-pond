@@ -28,6 +28,7 @@ _ACTION_LEVEL = {
     "manual_command": 2,
     "inject_sensor_fault": 2,
     "clear_sensor_fault": 2,
+    "configure_module": 2,
 }
 
 
@@ -183,6 +184,13 @@ class RuntimeApplicationService:
                 )
             elif action == "clear_sensor_fault":
                 self.runtime.sensors.set_fault(str(data["sensor_id"]), None)
+            elif action == "configure_module":
+                self.runtime.configure_module(
+                    str(data["module_id"]),
+                    installation_state=data.get("installation_state"),
+                    enabled=data.get("enabled"),
+                    actor=str(data.get("actor", role)),
+                )
 
             self.runtime.events.append(
                 self.runtime.clock.current,

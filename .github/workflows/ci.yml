@@ -42,8 +42,19 @@ jobs:
           python -m smart_koi_pond.scenarios.regression_matrix
           --output artifacts/v1-regression-matrix-${{ matrix.python-version }}.json
 
+      - name: Build modular-platform evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.modular_matrix
+          --output artifacts/modular-platform-matrix-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
           name: v1-regression-matrix-python-${{ matrix.python-version }}
           path: artifacts/v1-regression-matrix-${{ matrix.python-version }}.json
+
+      - name: Upload modular-platform evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: modular-platform-matrix-python-${{ matrix.python-version }}
+          path: artifacts/modular-platform-matrix-${{ matrix.python-version }}.json
