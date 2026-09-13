@@ -8,7 +8,6 @@ from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.enums import (
     AvailabilityState,
-    CommandOwner,
     DataQuality,
     OperatingMode,
     SystemState,
@@ -17,8 +16,8 @@ from smart_koi_pond.domain.enums import (
 )
 from smart_koi_pond.domain.models import PondState
 from smart_koi_pond.scenarios.regression_matrix import (
-    GateStatus,
     V1_REGRESSION_MATRIX,
+    GateStatus,
     matrix_payload,
 )
 from smart_koi_pond.sensors.virtual import SensorFault
