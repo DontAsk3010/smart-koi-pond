@@ -22,6 +22,7 @@ from smart_koi_pond.domain.enums import (
     SystemState,
 )
 from smart_koi_pond.domain.models import (
+    AssetStatus,
     CapabilitySummary,
     Classification,
     CommandIntent,
@@ -101,9 +102,11 @@ class DigitalTwinRuntime:
         return command, device_feedback
 
     def tick(self, seconds: float) -> RuntimeSnapshot:
+        before = self.clock.current
         self.clock.advance(seconds)
         now = self.clock.current
-        self.model.step(seconds, self.actuators.feedback_map())
+        simulated_seconds = (now - before).total_seconds()
+        self.model.step(simulated_seconds, self.actuators.feedback_map())
 
         raw = self.sensors.sample(self.model.state, now)
         validated = validate_all(raw)
@@ -191,8 +194,22 @@ class DigitalTwinRuntime:
             },
         )
 
+        assets = {
+            asset_id: AssetStatus(
+                asset_id=asset_id,
+                owner=asset.owner,
+                availability=asset.availability,
+                feedback_on=asset.feedback_on,
+            )
+            for asset_id, asset in self.actuators.assets.items()
+        }
+
         return RuntimeSnapshot(
             timestamp=now,
+            run_id=self.run_id,
+            config_version=self.config_version,
+            simulation_paused=self.clock.paused,
+            simulation_acceleration=self.clock.acceleration,
             execution_mode=self.execution_mode,
             operating_mode=self.operating_mode,
             operating_status=self.modes.status,
@@ -202,6 +219,7 @@ class DigitalTwinRuntime:
             estimate=estimate,
             classification=classification,
             capability=capability,
+            assets=assets,
             commands=commands,
             feedback=feedback,
             verification=list(self.verification.tasks),

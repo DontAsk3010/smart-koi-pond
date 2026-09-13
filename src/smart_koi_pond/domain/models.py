@@ -121,9 +121,21 @@ class OperatingStatus:
     scope: tuple[str, ...] = ()
 
 
+@dataclass(slots=True, frozen=True)
+class AssetStatus:
+    asset_id: str
+    owner: CommandOwner
+    availability: AvailabilityState
+    feedback_on: bool
+
+
 @dataclass(slots=True)
 class RuntimeSnapshot:
     timestamp: datetime
+    run_id: str
+    config_version: str
+    simulation_paused: bool
+    simulation_acceleration: float
     execution_mode: ExecutionMode
     operating_mode: OperatingMode
     operating_status: OperatingStatus
@@ -133,6 +145,7 @@ class RuntimeSnapshot:
     estimate: StateEstimate
     classification: Classification
     capability: CapabilitySummary
+    assets: dict[str, AssetStatus]
     commands: dict[str, ArbitratedCommand]
     feedback: dict[str, DeviceFeedback]
     verification: list[VerificationTask]

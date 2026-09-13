@@ -1,1 +1,1 @@
-"""Subsystem package placeholder. Implementation must follow governed project specifications."""
+"""Live state-bound Digital Twin dashboard and runtime transport adapters."""
