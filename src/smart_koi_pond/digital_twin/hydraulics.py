@@ -153,14 +153,16 @@ class PondDesignProfile:
 class HydraulicNetworkModel:
     """Deterministic, reconfigurable hydraulic model for simulation.
 
-    The model is profile-driven and exposes calculated requirements separately from
-    declared equipment capacity. It does not infer that installed hardware is faulty,
-    oversized, undersized, or upgrade-required without evidence supporting that claim.
+    Independent/manual restriction and process-derived restriction are stored separately
+    and composed. Cleaning one process must never erase an unrelated restriction/fault.
     """
 
     def __init__(self, profile: PondDesignProfile) -> None:
         self.profile = profile
         self._route_restrictions: dict[str, float] = {
+            route.route_id: 1.0 for route in profile.routes
+        }
+        self._route_process_factors: dict[str, float] = {
             route.route_id: 1.0 for route in profile.routes
         }
         self._last_state = self.evaluate({})
@@ -183,32 +185,57 @@ class HydraulicNetworkModel:
             / 60.0
         )
 
+    def has_route(self, route_id: str) -> bool:
+        return route_id in {route.route_id for route in self.profile.routes}
+
     def configure_profile(self, profile: PondDesignProfile) -> None:
-        existing = self._route_restrictions
+        existing_restrictions = self._route_restrictions
+        existing_process_factors = self._route_process_factors
         self.profile = profile
         self._route_restrictions = {
-            route.route_id: existing.get(route.route_id, 1.0) for route in profile.routes
+            route.route_id: existing_restrictions.get(route.route_id, 1.0)
+            for route in profile.routes
+        }
+        self._route_process_factors = {
+            route.route_id: existing_process_factors.get(route.route_id, 1.0)
+            for route in profile.routes
         }
         self._last_state = self.evaluate({})
 
     def set_route_restriction(self, route_id: str, throughput_factor: float) -> None:
-        if route_id not in {route.route_id for route in self.profile.routes}:
+        if not self.has_route(route_id):
             raise KeyError(route_id)
         factor = float(throughput_factor)
         if not 0.0 <= factor <= 1.0:
             raise ValueError("route throughput factor must be between 0.0 and 1.0")
         self._route_restrictions[route_id] = factor
 
+    def set_route_process_factor(self, route_id: str, throughput_factor: float) -> None:
+        if not self.has_route(route_id):
+            raise KeyError(route_id)
+        factor = float(throughput_factor)
+        if not 0.0 <= factor <= 1.0:
+            raise ValueError("route process factor must be between 0.0 and 1.0")
+        self._route_process_factors[route_id] = factor
+
     def route_restriction(self, route_id: str) -> float:
         if route_id not in self._route_restrictions:
             raise KeyError(route_id)
         return self._route_restrictions[route_id]
 
+    def route_process_factor(self, route_id: str) -> float:
+        if route_id not in self._route_process_factors:
+            raise KeyError(route_id)
+        return self._route_process_factors[route_id]
+
+    def _combined_factor(self, route_id: str) -> float:
+        return self._route_restrictions[route_id] * self._route_process_factors[route_id]
+
     def _declared_capacity(self, role: HydraulicRouteRole) -> float:
         return sum(
             route.rated_flow_l_min
             * route.base_throughput_factor
-            * self._route_restrictions[route.route_id]
+            * self._combined_factor(route.route_id)
             for route in self.profile.routes
             if route.role == role
         )
@@ -227,12 +254,14 @@ class HydraulicNetworkModel:
         route_states: dict[str, dict[str, Any]] = {}
         total_flow = 0.0
         for route in self.profile.routes:
-            runtime_factor = self._route_restrictions[route.route_id]
+            independent_factor = self._route_restrictions[route.route_id]
+            process_factor = self._route_process_factors[route.route_id]
+            combined_factor = independent_factor * process_factor
             active_effect = self._effect(actuator_effects, route.asset_id)
             effective_flow = (
                 route.rated_flow_l_min
                 * route.base_throughput_factor
-                * runtime_factor
+                * combined_factor
                 * active_effect
             )
             total_flow += effective_flow
@@ -242,7 +271,9 @@ class HydraulicNetworkModel:
                 "role": route.role.value,
                 "rated_flow_l_min": route.rated_flow_l_min,
                 "base_throughput_factor": route.base_throughput_factor,
-                "runtime_throughput_factor": runtime_factor,
+                "runtime_throughput_factor": combined_factor,
+                "independent_restriction_factor": independent_factor,
+                "process_throughput_factor": process_factor,
                 "actuator_effectiveness": active_effect,
                 "effective_flow_l_min": effective_flow,
                 "provenance": route.provenance.value,
@@ -309,6 +340,7 @@ class HydraulicNetworkModel:
         return {
             "profile": self.profile.to_dict(),
             "route_restrictions": dict(self._route_restrictions),
+            "route_process_factors": dict(self._route_process_factors),
         }
 
     @classmethod
@@ -320,5 +352,8 @@ class HydraulicNetworkModel:
         for route_id, factor in data.get("route_restrictions", {}).items():
             if route_id in network._route_restrictions:
                 network.set_route_restriction(route_id, float(factor))
+        for route_id, factor in data.get("route_process_factors", {}).items():
+            if route_id in network._route_process_factors:
+                network.set_route_process_factor(route_id, float(factor))
         network._last_state = network.evaluate({})
         return network
