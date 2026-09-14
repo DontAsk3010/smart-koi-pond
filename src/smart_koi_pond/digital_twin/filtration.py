@@ -156,11 +156,16 @@ class MechanicalFiltrationModel:
 
         discharge_l: float | None = None
         if self.profile.backwash_discharge_flow_l_min is not None:
-            discharge_l = (
+            requested_discharge_l = (
                 self.profile.backwash_discharge_flow_l_min
                 * minutes
                 * bounded_backwash
             )
+            available_water_l = volume_l * min(
+                100.0,
+                max(0.0, float(state.water_level_pct)),
+            ) / 100.0
+            discharge_l = min(requested_discharge_l, available_water_l)
             self.cumulative_backwash_discharge_l += discharge_l
 
         self._last_captured_g = captured_g
