@@ -91,6 +91,15 @@ INTEGRATED_VIRTUAL_POND_MATRIX: tuple[IntegratedVirtualPondCase, ...] = (
         ),
         "test_browser_surface_exposes_integrated_setup_without_hidden_process_values",
     ),
+    IntegratedVirtualPondCase(
+        "ivp_09_governed_backwash",
+        GateStatus.PASS,
+        (
+            "Filter-clean action uses the governed backwash-valve workflow and does not "
+            "invent a non-existent mechanical-filter actuator asset."
+        ),
+        "test_governed_backwash_uses_backwash_valve_without_fake_filter_asset",
+    ),
 )
 
 
