@@ -188,10 +188,11 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         *,
         actor: str,
     ) -> ConfigurationTransaction:
-        if self.model.hydraulics is None:
+        hydraulics = self.model.hydraulics
+        if hydraulics is None or not hydraulics.has_route(route_id):
             before_value = None
         else:
-            before_value = self.model.hydraulics.route_restriction(route_id)
+            before_value = hydraulics.route_restriction(route_id)
         transaction = self._apply_governed_configuration(
             scope=f"HYDRAULIC_RESTRICTION:{route_id}",
             actor=actor,
