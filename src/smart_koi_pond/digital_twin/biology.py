@@ -152,7 +152,7 @@ class BiologicalProcessModel:
         feed_kg_per_day: float | None,
         nitrified_n_g_per_hour: float = 0.0,
     ) -> float | None:
-        if biomass_kg is None or feed_kg_per_day is None:
+        if volume_l <= 0 or biomass_kg is None or feed_kg_per_day is None:
             return None
         p = self.profile
         oxygen_g_per_hour = (
@@ -175,6 +175,8 @@ class BiologicalProcessModel:
     ) -> float:
         if seconds < 0:
             raise ValueError("seconds cannot be negative")
+        if volume_l < 0:
+            raise ValueError("volume_l cannot be negative")
         missing_profile_inputs = []
         if biomass_kg is None:
             missing_profile_inputs.append("biomass_kg")
@@ -188,6 +190,20 @@ class BiologicalProcessModel:
             "waste_solids_g": state.waste_solids_g,
         }
         missing_chemistry = [name for name, value in chemistry_values.items() if value is None]
+        volume_evidence = {
+            "water_volume_l": volume_l,
+            "water_volume_basis": "ACTUAL_MODELED_VOLUME_AT_STEP_START",
+        }
+
+        if volume_l == 0:
+            self._last_snapshot = {
+                **self._empty_snapshot("NO_WATER_VOLUME"),
+                **volume_evidence,
+                "missing_inputs": tuple(missing_profile_inputs),
+                "chemistry_evolution_active": False,
+                "biological_oxygen_demand_mg_l_per_hour": None,
+            }
+            return 0.0
 
         base_demand = self.evaluate_oxygen_demand_mg_l_per_hour(
             volume_l=volume_l,
@@ -197,6 +213,7 @@ class BiologicalProcessModel:
         if missing_profile_inputs:
             self._last_snapshot = {
                 **self._empty_snapshot("INPUT_REQUIRED"),
+                **volume_evidence,
                 "missing_inputs": tuple(missing_profile_inputs),
                 "chemistry_evolution_active": False,
                 "biological_oxygen_demand_mg_l_per_hour": None,
@@ -206,6 +223,7 @@ class BiologicalProcessModel:
         if missing_chemistry:
             self._last_snapshot = {
                 **self._empty_snapshot("CHEMISTRY_INPUT_REQUIRED"),
+                **volume_evidence,
                 "missing_inputs": tuple(missing_chemistry),
                 "chemistry_evolution_active": False,
                 "biological_oxygen_demand_mg_l_per_hour": base_demand,
@@ -215,6 +233,7 @@ class BiologicalProcessModel:
         if seconds == 0:
             self._last_snapshot = {
                 **self._empty_snapshot("READY"),
+                **volume_evidence,
                 "missing_inputs": (),
                 "chemistry_evolution_active": True,
                 "biological_oxygen_demand_mg_l_per_hour": base_demand,
@@ -300,6 +319,7 @@ class BiologicalProcessModel:
         )
         self._last_snapshot = {
             **self._empty_snapshot("READY"),
+            **volume_evidence,
             "missing_inputs": (),
             "chemistry_evolution_active": True,
             "biomass_kg": biomass_kg,
