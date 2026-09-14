@@ -77,6 +77,11 @@ jobs:
           python -m smart_koi_pond.scenarios.integrated_biology_matrix
           --output artifacts/integrated-biology-environment-${{ matrix.python-version }}.json
 
+      - name: Build mechanical filtration fidelity evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.mechanical_filtration_matrix
+          --output artifacts/mechanical-filtration-fidelity-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -124,3 +129,9 @@ jobs:
         with:
           name: integrated-biology-environment-python-${{ matrix.python-version }}
           path: artifacts/integrated-biology-environment-${{ matrix.python-version }}.json
+
+      - name: Upload mechanical filtration fidelity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mechanical-filtration-fidelity-python-${{ matrix.python-version }}
+          path: artifacts/mechanical-filtration-fidelity-${{ matrix.python-version }}.json
