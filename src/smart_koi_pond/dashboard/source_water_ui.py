@@ -67,6 +67,7 @@ SOURCE_WATER_UI_SCRIPT = r"""
     const drain=maybeNumber('swDrainTarget'),refill=maybeNumber('swRefillTarget');if(drain===null||refill===null)throw new Error('drain/refill targets: INPUT REQUIRED');if(refill<drain)throw new Error('refill target must be at or above drain target');
     await command('start_water_change',{target_drain_level_pct:drain,target_refill_level_pct:refill,reason:'INTEGRATED_VIRTUAL_POND_SOURCE_WATER_UI'});
   }catch(err){text('commandResult',`start_water_change: ${err.message}`)}};
+  window.ivpBackwash=async function(){try{await command('start_filter_clean',{service_scope:[],reason:'INTEGRATED_VIRTUAL_POND_UI'})}catch(err){text('commandResult',`start_filter_clean: ${err.message}`)}};
   const previous=window.renderSnapshot;if(typeof previous==='function'){window.renderSnapshot=function(snapshot,options){previous(snapshot,options);render(snapshot)}}
   install();if(typeof displayed!=='undefined'&&displayed)render(displayed);
 })();
