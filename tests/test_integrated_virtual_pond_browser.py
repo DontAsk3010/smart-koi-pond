@@ -74,12 +74,33 @@ def service() -> RuntimeApplicationService:
     return RuntimeApplicationService(build_integrated_virtual_runtime())
 
 
+def activate_modeled_flow(app: RuntimeApplicationService) -> None:
+    app.command(
+        "configure_module",
+        {"module_id": "flow_monitoring", "enabled": True, "actor": "test-owner"},
+        role="engineering",
+    )
+
+
+def enter_manual_equipment_control(app: RuntimeApplicationService) -> None:
+    app.command(
+        "start_manual_maintenance",
+        {
+            "scope": ["main_pump", "primary_aerator"],
+            "service_locked": [],
+            "reason": "TEST_GOVERNED_MANUAL_CONTROL",
+        },
+        role="engineering",
+    )
+
+
 def configure_stack(app: RuntimeApplicationService, *, turbidity: float | None = None) -> None:
     app.command(
         "configure_design_profile",
         {"profile": pond_profile(), "actor": "test-owner"},
         role="engineering",
     )
+    activate_modeled_flow(app)
     app.command(
         "configure_biological_profile",
         {"profile": biology_profile(), "actor": "test-owner"},
@@ -115,6 +136,9 @@ def test_integrated_entrypoint_starts_honestly_input_required() -> None:
     assert snapshot["biology"]["configured"] is False
     assert snapshot["hydraulics"]["mechanical_filtration"]["configured"] is False
     assert all(not asset.feedback_on for asset in runtime.actuators.assets.values())
+    registry = snapshot["capability"]["registry"]
+    assert registry["modules"]["flow_monitoring"]["operational_state"] == "DISABLED"
+    assert registry["modules"]["backup_circulation"]["operational_state"] == "DISABLED"
     assert any(
         event.code == "INTEGRATED_VIRTUAL_POND_STARTED"
         for event in runtime.events.events
@@ -125,6 +149,7 @@ def test_integrated_entrypoint_starts_honestly_input_required() -> None:
 def test_full_stack_configuration_becomes_visible_from_canonical_publication() -> None:
     app = service()
     configure_stack(app)
+    enter_manual_equipment_control(app)
     app.command(
         "manual_command",
         {"asset_id": "main_pump", "on": True, "reason": "TEST_OWNER_COMMAND"},
@@ -164,6 +189,7 @@ def test_owner_volume_revision_recalculates_requirement_in_same_runtime() -> Non
         {"profile": pond_profile(), "actor": "test-owner"},
         role="engineering",
     )
+    activate_modeled_flow(app)
     first = app.publication()["snapshot"]["hydraulics"]
 
     revised = pond_profile()
@@ -203,6 +229,8 @@ def test_actuator_fault_removes_false_flow_from_visible_process_state() -> None:
         {"profile": pond_profile(), "actor": "test-owner"},
         role="engineering",
     )
+    activate_modeled_flow(app)
+    enter_manual_equipment_control(app)
     app.command(
         "manual_command",
         {"asset_id": "main_pump", "on": True, "reason": "TEST_OWNER_COMMAND"},
@@ -225,6 +253,7 @@ def test_actuator_fault_removes_false_flow_from_visible_process_state() -> None:
 def test_historian_playback_preserves_integrated_process_state() -> None:
     app = service()
     configure_stack(app, turbidity=0.4)
+    enter_manual_equipment_control(app)
     app.command(
         "manual_command",
         {"asset_id": "main_pump", "on": True, "reason": "TEST_OWNER_COMMAND"},
@@ -247,4 +276,7 @@ def test_browser_surface_exposes_integrated_setup_without_hidden_process_values(
     assert "Apply Biology Profile" in COMPOSED_INDEX_HTML
     assert "Apply Mechanical Filter" in COMPOSED_INDEX_HTML
     assert "Live Process Evidence" in COMPOSED_INDEX_HTML
+    assert "Enter Manual Equipment Control" in COMPOSED_INDEX_HTML
+    assert "AUTO ownership cannot be bypassed" in COMPOSED_INDEX_HTML
+    assert "backup circulation remains DISABLED BY CONFIGURATION" in COMPOSED_INDEX_HTML
     assert "/api/command" in COMPOSED_INDEX_HTML
