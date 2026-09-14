@@ -101,21 +101,15 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
             "configure_source_water_profile",
             None,
         )
-        setattr(
-            self.model,
-            "configure_biological_profile",
-            self._governed_configure_biological_profile,
+        self.model.configure_biological_profile = (
+            self._governed_configure_biological_profile
         )
-        setattr(
-            self.model,
-            "configure_mechanical_filtration_profile",
-            self._governed_configure_mechanical_filtration_profile,
+        self.model.configure_mechanical_filtration_profile = (
+            self._governed_configure_mechanical_filtration_profile
         )
         if self._original_configure_source_water_profile is not None:
-            setattr(
-                self.model,
-                "configure_source_water_profile",
-                self._governed_configure_source_water_profile,
+            self.model.configure_source_water_profile = (
+                self._governed_configure_source_water_profile
             )
 
     def _governed_configure_biological_profile(
