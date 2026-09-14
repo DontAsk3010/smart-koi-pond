@@ -63,9 +63,11 @@ INTEGRATED_CONTROL_UI_SCRIPT = r"""
       };
       await command('configure_design_profile',{profile,actor:'owner-ui'});
       await command('configure_module',{module_id:'flow_monitoring',enabled:true,actor:'owner-ui'});
-      if(backup!==null){
-        await command('configure_module',{module_id:'backup_circulation',enabled:true,actor:'owner-ui'});
-      }
+      await command('configure_module',{
+        module_id:'backup_circulation',
+        enabled:backup!==null,
+        actor:'owner-ui'
+      });
       text('commandResult',backup===null
         ? 'Pond profile active · modeled flow monitoring enabled · backup circulation remains DISABLED BY CONFIGURATION'
         : 'Pond profile active · modeled flow monitoring and explicit backup circulation enabled');
@@ -108,6 +110,24 @@ INTEGRATED_CONTROL_UI_SCRIPT = r"""
       });
       text('commandResult',`${asset}: ${on?'ON':'OFF'} manual command accepted`);
     }catch(error){text('commandResult',`manual_command: ${error.message}`)}
+  };
+
+  window.ivpBackwash=async function(){
+    try{
+      const snapshot=(typeof displayed!=='undefined'&&displayed)||(typeof latestLive!=='undefined'&&latestLive);
+      const filter=snapshot?.hydraulics?.mechanical_filtration;
+      if(!filter?.configured){
+        throw new Error('Mechanical Filter profile is INPUT REQUIRED');
+      }
+      if(snapshot?.operating_mode&&snapshot.operating_mode!=='NORMAL_AUTO'){
+        throw new Error(`operating mode already active: ${snapshot.operating_mode}`);
+      }
+      await command('start_filter_clean',{
+        service_scope:[],
+        reason:'INTEGRATED_VIRTUAL_POND_UI'
+      });
+      text('commandResult','Governed filter clean / backwash started through backwash valve workflow');
+    }catch(error){text('commandResult',`start_filter_clean: ${error.message}`)}
   };
 
   function installOwnershipControls(){
