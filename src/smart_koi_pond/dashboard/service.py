@@ -117,7 +117,7 @@ class RuntimeApplicationService:
             publication["snapshot"]["biology"] = _wire(
                 self.runtime.model.biological_snapshot()
             )
-            publication["process_visual_schema_version"] = 1
+            publication["process_visual_schema_version"] = 2
             publication["biology_schema_version"] = 1
             publication["mechanical_filtration_schema_version"] = 1
             publication["scenario_triggers"] = _wire(self.scenarios.triggers)
