@@ -59,7 +59,10 @@ def build_integrated_virtual_runtime(
         clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
         config_version="integrated-virtual-pond-v1-input-required",
         historian_path=historian_path,
-        module_enabled={"backup_circulation": False},
+        module_enabled={
+            "flow_monitoring": False,
+            "backup_circulation": False,
+        },
     )
     runtime.events.append(
         runtime.clock.current,
@@ -71,6 +74,7 @@ def build_integrated_virtual_runtime(
             "pond_profile": "INPUT_REQUIRED",
             "biological_profile": "INPUT_REQUIRED",
             "mechanical_filtration_profile": "INPUT_REQUIRED",
+            "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
             "simulation_initial_state_is_physical_measurement": False,
             "hidden_engineering_defaults": False,
