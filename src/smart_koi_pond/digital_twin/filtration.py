@@ -10,11 +10,7 @@ from smart_koi_pond.domain.models import PondState
 
 @dataclass(slots=True, frozen=True)
 class MechanicalFiltrationProfile:
-    """Explicit-input mechanical-filtration process configuration.
-
-    All quantitative process behavior is configured or sourced. Optional discharge and
-    turbidity-correlation inputs remain unavailable when they have no governed basis.
-    """
+    """Explicit-input mechanical-filtration process configuration."""
 
     profile_id: str
     revision: str
@@ -102,7 +98,7 @@ class MechanicalFiltrationModel:
         self.captured_solids_g = 0.0
         self.cumulative_backwash_removed_g = 0.0
         self.cumulative_backwash_discharge_l = 0.0
-        self._last_captured_g = 0.0
+        self._last_captured_g: float | None = None
         self._last_backwash_removed_g = 0.0
         self._last_backwash_discharge_l: float | None = None
         self._last_route_flow_l_min = 0.0
@@ -136,18 +132,19 @@ class MechanicalFiltrationModel:
         if route_flow_l_min < 0:
             raise ValueError("route_flow_l_min must be non-negative")
 
-        suspended_g = max(0.0, float(state.waste_solids_g or 0.0))
         minutes = seconds / 60.0
-        processed_volume_l = route_flow_l_min * minutes
-        processed_turnovers = processed_volume_l / volume_l
-        capture_fraction = 0.0
-        if route_flow_l_min > 0 and processed_turnovers > 0:
-            capture_fraction = 1.0 - (
-                1.0 - self.profile.capture_efficiency_per_pass
-            ) ** processed_turnovers
-        captured_g = min(suspended_g, suspended_g * capture_fraction)
-        state.waste_solids_g = suspended_g - captured_g
-        self.captured_solids_g += captured_g
+        captured_g: float | None = None
+        if state.waste_solids_g is not None:
+            suspended_g = max(0.0, float(state.waste_solids_g))
+            processed_turnovers = route_flow_l_min * minutes / volume_l
+            capture_fraction = 0.0
+            if route_flow_l_min > 0 and processed_turnovers > 0:
+                capture_fraction = 1.0 - (
+                    1.0 - self.profile.capture_efficiency_per_pass
+                ) ** processed_turnovers
+            captured_g = min(suspended_g, suspended_g * capture_fraction)
+            state.waste_solids_g = suspended_g - captured_g
+            self.captured_solids_g += captured_g
 
         bounded_backwash = min(1.0, max(0.0, float(backwash_effect)))
         removed_g = min(
@@ -262,7 +259,10 @@ class MechanicalFiltrationModel:
         model.cumulative_backwash_discharge_l = max(
             0.0, float(data.get("cumulative_backwash_discharge_l", 0.0))
         )
-        model._last_captured_g = max(0.0, float(data.get("last_captured_g", 0.0)))
+        last_captured = data.get("last_captured_g")
+        model._last_captured_g = (
+            float(last_captured) if last_captured is not None else None
+        )
         model._last_backwash_removed_g = max(
             0.0, float(data.get("last_backwash_removed_g", 0.0))
         )
