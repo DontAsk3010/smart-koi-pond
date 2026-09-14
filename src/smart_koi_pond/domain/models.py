@@ -259,3 +259,5 @@ class RuntimeSnapshot:
     design_profile: dict[str, Any] = field(default_factory=dict)
     hydraulics: dict[str, Any] = field(default_factory=dict)
     biology: dict[str, Any] = field(default_factory=dict)
+    configuration_control: dict[str, Any] = field(default_factory=dict)
+    recovery_control: dict[str, Any] = field(default_factory=dict)
