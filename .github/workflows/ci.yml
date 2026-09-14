@@ -82,6 +82,11 @@ jobs:
           python -m smart_koi_pond.scenarios.mechanical_filtration_matrix
           --output artifacts/mechanical-filtration-fidelity-${{ matrix.python-version }}.json
 
+      - name: Build Integrated Virtual Pond browser evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.integrated_virtual_pond_matrix
+          --output artifacts/integrated-virtual-pond-browser-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -135,3 +140,9 @@ jobs:
         with:
           name: mechanical-filtration-fidelity-python-${{ matrix.python-version }}
           path: artifacts/mechanical-filtration-fidelity-${{ matrix.python-version }}.json
+
+      - name: Upload Integrated Virtual Pond browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrated-virtual-pond-browser-python-${{ matrix.python-version }}
+          path: artifacts/integrated-virtual-pond-browser-${{ matrix.python-version }}.json
