@@ -7,17 +7,20 @@ from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
+from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import PondState
 
 
-def build_simulation_runtime(
+def build_integrated_virtual_runtime(
     *,
     historian_path: str | None = None,
 ) -> DigitalTwinRuntime:
-    """Build the V1 simulator runtime.
+    """Build the production-lineage Integrated Virtual Pond runtime.
 
-    These values are explicit software-simulation inputs, not production biological
-    engineering setpoints or commissioning authority.
+    The base water values below are simulation initial-state values only. They are not
+    pond measurements, hardware sizing facts, biological engineering references, or
+    production setpoints. Pond/hydraulic, biological and mechanical-filtration profiles
+    remain explicitly unconfigured until supplied through governed configuration paths.
     """
     policy = SimulationControlPolicy(
         do_watch_below=5.0,
@@ -45,13 +48,32 @@ def build_simulation_runtime(
         ),
         policy,
         clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
-        config_version="digital-twin-v1-demo-only",
+        config_version="integrated-virtual-pond-v1-input-required",
         historian_path=historian_path,
     )
-    runtime.actuators.assets["main_pump"].feedback_on = True
-    runtime.actuators.assets["primary_aerator"].feedback_on = True
-    runtime._last_feedback = runtime.actuators.feedback_map()
+    runtime.events.append(
+        runtime.clock.current,
+        EventType.CONFIGURATION,
+        "INTEGRATED_VIRTUAL_POND_STARTED",
+        {
+            "execution_mode": "SIMULATION",
+            "real_device_control": False,
+            "pond_profile": "INPUT_REQUIRED",
+            "biological_profile": "INPUT_REQUIRED",
+            "mechanical_filtration_profile": "INPUT_REQUIRED",
+            "simulation_initial_state_is_physical_measurement": False,
+            "hidden_engineering_defaults": False,
+        },
+    )
     return runtime
+
+
+def build_simulation_runtime(
+    *,
+    historian_path: str | None = None,
+) -> DigitalTwinRuntime:
+    """Compatibility alias for callers using the earlier entry-point name."""
+    return build_integrated_virtual_runtime(historian_path=historian_path)
 
 
 def main() -> None:
@@ -61,10 +83,11 @@ def main() -> None:
         "SMART_KOI_HISTORIAN_PATH",
         "runtime-data/historian.jsonl",
     )
-    runtime = build_simulation_runtime(historian_path=historian_path)
+    runtime = build_integrated_virtual_runtime(historian_path=historian_path)
     service = RuntimeApplicationService(runtime)
-    print(f"Smart Koi Pond Digital Twin V1: http://{host}:{port}")
+    print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
+    print("Pond/hydraulic, biology and filter facts: INPUT REQUIRED until configured")
     print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)
 
