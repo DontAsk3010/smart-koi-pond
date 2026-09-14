@@ -16,7 +16,6 @@ from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.models import PondState
 
-
 POLICY = SimulationControlPolicy(
     do_watch_below=5.0,
     do_emergency_below=4.0,
