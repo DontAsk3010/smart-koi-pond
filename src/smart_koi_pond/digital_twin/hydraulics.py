@@ -6,7 +6,12 @@ from enum import StrEnum
 from typing import Any
 
 
+REFERENCE_STANDARD_METRIC_PROFILE_ID = "REFERENCE_STANDARD_METRIC_V1"
+
+
 class EngineeringProvenance(StrEnum):
+    EXPERT_REFERENCE_PROFILE = "EXPERT_REFERENCE_PROFILE"
+    USER_CONFIGURED = "USER_CONFIGURED"
     USER_CONFIGURED_SCENARIO = "USER_CONFIGURED_SCENARIO"
     DATASHEET = "DATASHEET"
     CALCULATED = "CALCULATED"
@@ -79,6 +84,11 @@ class PondDesignProfile:
     drain_flow_l_min: float | None = None
     biomass_kg: float | None = None
     feed_kg_per_day: float | None = None
+    length_m: float | None = None
+    width_m: float | None = None
+    water_depth_m: float | None = None
+    reference_profile_id: str | None = None
+    overridden_fields: tuple[str, ...] = ()
     provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
 
     def __post_init__(self) -> None:
@@ -105,6 +115,12 @@ class PondDesignProfile:
             value = getattr(self, field_name)
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be non-negative when provided")
+        for field_name in ("length_m", "width_m", "water_depth_m"):
+            value = getattr(self, field_name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{field_name} must be positive when provided")
+        if any(not item for item in self.overridden_fields):
+            raise ValueError("overridden_fields may not contain empty names")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> PondDesignProfile:
@@ -136,6 +152,23 @@ class PondDesignProfile:
                 if data.get("feed_kg_per_day") is not None
                 else None
             ),
+            length_m=(
+                float(data["length_m"]) if data.get("length_m") is not None else None
+            ),
+            width_m=(
+                float(data["width_m"]) if data.get("width_m") is not None else None
+            ),
+            water_depth_m=(
+                float(data["water_depth_m"])
+                if data.get("water_depth_m") is not None
+                else None
+            ),
+            reference_profile_id=(
+                str(data["reference_profile_id"])
+                if data.get("reference_profile_id") is not None
+                else None
+            ),
+            overridden_fields=tuple(str(item) for item in data.get("overridden_fields", ())),
             provenance=EngineeringProvenance.normalize(
                 data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
             ),
@@ -144,10 +177,41 @@ class PondDesignProfile:
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["provenance"] = self.provenance.value
+        payload["overridden_fields"] = list(self.overridden_fields)
         for route in payload["routes"]:
             route["role"] = route["role"].value
             route["provenance"] = route["provenance"].value
         return payload
+
+
+def reference_standard_metric_v1() -> PondDesignProfile:
+    """Return the governed Smart Koi Pond ordinary metric reference profile.
+
+    The route capacity is the reference process requirement for the virtual profile,
+    not a claim about any installed pump or real site hardware.
+    """
+    return PondDesignProfile(
+        profile_id=REFERENCE_STANDARD_METRIC_PROFILE_ID,
+        revision="1",
+        effective_volume_l=12_000.0,
+        circulation_turnovers_per_hour_guide=1.0,
+        routes=(
+            HydraulicRouteSpec(
+                route_id="main-circulation",
+                asset_id="main_pump",
+                rated_flow_l_min=200.0,
+                role=HydraulicRouteRole.PRIMARY,
+                base_throughput_factor=1.0,
+                provenance=EngineeringProvenance.EXPERT_REFERENCE_PROFILE,
+            ),
+        ),
+        length_m=4.0,
+        width_m=2.0,
+        water_depth_m=1.5,
+        reference_profile_id=REFERENCE_STANDARD_METRIC_PROFILE_ID,
+        overridden_fields=(),
+        provenance=EngineeringProvenance.EXPERT_REFERENCE_PROFILE,
+    )
 
 
 class HydraulicNetworkModel:
@@ -293,6 +357,11 @@ class HydraulicNetworkModel:
             "profile_id": self.profile.profile_id,
             "profile_revision": self.profile.revision,
             "profile_provenance": self.profile.provenance.value,
+            "reference_profile_id": self.profile.reference_profile_id,
+            "overridden_fields": list(self.profile.overridden_fields),
+            "length_m": self.profile.length_m,
+            "width_m": self.profile.width_m,
+            "water_depth_m": self.profile.water_depth_m,
             "effective_volume_l": self.profile.effective_volume_l,
             "circulation_turnovers_per_hour_guide": (
                 self.profile.circulation_turnovers_per_hour_guide
