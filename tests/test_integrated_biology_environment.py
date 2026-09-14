@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,7 +20,6 @@ from smart_koi_pond.digital_twin.scenario_control import (
 )
 from smart_koi_pond.domain.enums import OperatingMode, SystemState
 from smart_koi_pond.domain.models import PondState
-
 
 POLICY = SimulationControlPolicy(
     do_watch_below=5.0,
