@@ -136,6 +136,6 @@ def test_legacy_integrated_startup_still_does_not_claim_reference_as_site_fact()
     assert runtime.config_version == "integrated-virtual-pond-v1-input-required"
     assert any(
         event.code == "INTEGRATED_VIRTUAL_POND_STARTED"
-        and event.details["hidden_engineering_defaults"] is False
+        and event.payload["hidden_engineering_defaults"] is False
         for event in runtime.events.events
     )
