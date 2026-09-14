@@ -28,55 +28,82 @@ GOVERNED_RECOVERY_MATRIX: tuple[GovernedRecoveryCase, ...] = (
     GovernedRecoveryCase(
         "grr_02_parent_last_good_lineage",
         GateStatus.PASS,
-        "Successful material configuration preserves parent lineage and promotes LAST_GOOD only after verification.",
+        (
+            "Successful material configuration preserves parent lineage and promotes "
+            "LAST_GOOD only after verification."
+        ),
         "test_successful_configuration_has_parent_and_last_good_lineage",
     ),
     GovernedRecoveryCase(
         "grr_03_config_verify_rollback",
         GateStatus.PASS,
-        "Failed post-activation configuration verification restores the compatible last-good state.",
+        (
+            "Failed post-activation configuration verification restores the compatible "
+            "last-good state."
+        ),
         "test_failed_post_activation_verification_rolls_back_to_last_good",
     ),
     GovernedRecoveryCase(
         "grr_04_staged_software_last_good",
         GateStatus.PASS,
-        "Software candidate remains STAGED until deployment execution plus verification passes before LAST_GOOD promotion.",
+        (
+            "Software candidate remains STAGED until deployment execution plus "
+            "verification passes before LAST_GOOD promotion."
+        ),
         "test_software_update_is_staged_then_verified_before_last_good",
     ),
     GovernedRecoveryCase(
         "grr_05_failed_software_rollback",
         GateStatus.PASS,
-        "Failed software verification invokes the injected rollback path and does not promote the candidate.",
+        (
+            "Failed software verification invokes the injected rollback path and does not "
+            "promote the candidate."
+        ),
         "test_failed_software_verification_rolls_back_and_does_not_promote_candidate",
     ),
     GovernedRecoveryCase(
         "grr_06_existing_control_fallback_verification",
         GateStatus.PASS,
-        "Primary circulation failure uses the existing backup-pump arbitration path and requires process verification before RECOVERED.",
+        (
+            "Primary circulation failure uses the existing backup-pump arbitration path "
+            "and requires process verification before RECOVERED."
+        ),
         "test_primary_pump_failure_recovers_through_existing_backup_and_process_verification",
     ),
     GovernedRecoveryCase(
         "grr_07_bounded_retry_lockout",
         GateStatus.PASS,
-        "Unavailable fallback is retried only within the governed limit and terminates in visible LOCKED_OUT state.",
+        (
+            "Unavailable fallback is retried only within the governed limit and terminates "
+            "in visible LOCKED_OUT state."
+        ),
         "test_unavailable_fallback_uses_bounded_retry_then_terminal_lockout",
     ),
     GovernedRecoveryCase(
         "grr_08_restart_reconciliation",
         GateStatus.PASS,
-        "Restart during recovery returns to reconciliation with de-energized outputs and no stale verification success.",
+        (
+            "Restart during recovery returns to reconciliation with de-energized outputs "
+            "and no stale verification success."
+        ),
         "test_recovery_supervisor_restart_requires_reconciliation_not_stale_success",
     ),
     GovernedRecoveryCase(
         "grr_09_publication_historian_visibility",
         GateStatus.PASS,
-        "Configuration and recovery lifecycle state is visible in canonical publication and historian frames.",
+        (
+            "Configuration and recovery lifecycle state is visible in canonical "
+            "publication and historian frames."
+        ),
         "test_publication_and_historian_expose_governed_change_and_recovery_state",
     ),
     GovernedRecoveryCase(
         "grr_10_non_escalation_boundary",
         GateStatus.PASS,
-        "Recovery cannot elevate execution/actuator authority or enable high-risk chemical dosing and infinite retry is prohibited.",
+        (
+            "Recovery cannot elevate execution/actuator authority or enable high-risk "
+            "chemical dosing and infinite retry is prohibited."
+        ),
         "test_recovery_cannot_escalate_real_authority_or_enable_high_risk_dosing",
     ),
 )
