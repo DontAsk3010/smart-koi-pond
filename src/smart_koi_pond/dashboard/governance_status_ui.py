@@ -59,8 +59,8 @@ GOVERNANCE_STATUS_SCRIPT = r"""
   }
   installGovernanceStatus();
   const baseRenderSnapshot=window.renderSnapshot;
-  if(typeof baseRenderSnapshot==='function'){window.renderSnapshot=function(snapshot,options){baseRenderSnapshot(snapshot,options);renderGovernanceStatus(snapshot)}}
+  if(typeof baseRenderSnapshot==='function'){window.renderSnapshot=function(snapshot,options){baseRenderSnapshot(snapshot,options);window.updateAssets(snapshot);renderGovernanceStatus(snapshot)}}
   window.renderGovernanceStatus=renderGovernanceStatus;
-  if(window.displayed)renderGovernanceStatus(window.displayed);
+  if(window.displayed){window.updateAssets(window.displayed);renderGovernanceStatus(window.displayed)}
 })();
 """
