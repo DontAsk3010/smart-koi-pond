@@ -87,9 +87,11 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         """Govern direct model mutations without replacing the accepted model object.
 
         Existing source-water/mass-balance contracts rely on the concrete model type.
-        Instance-level hooks preserve that type while routing material mutation through
-        the V0.16 transaction boundary.
+        Instance-level hooks preserve that type while routing every material model
+        configuration mutation through the V0.16 transaction boundary.
         """
+        self._original_configure_design_profile = self.model.configure_design_profile
+        self._original_set_hydraulic_restriction = self.model.set_hydraulic_restriction
         self._original_configure_biological_profile = (
             self.model.configure_biological_profile
         )
@@ -101,6 +103,10 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
             "configure_source_water_profile",
             None,
         )
+        self.model.configure_design_profile = self._governed_model_configure_design_profile
+        self.model.set_hydraulic_restriction = (
+            self._governed_model_set_hydraulic_restriction
+        )
         self.model.configure_biological_profile = (
             self._governed_configure_biological_profile
         )
@@ -111,6 +117,117 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
             self.model.configure_source_water_profile = (
                 self._governed_configure_source_water_profile
             )
+
+    def _design_profile_preflight(self, profile: PondDesignProfile) -> tuple[str, ...]:
+        filtration = self.model.filtration
+        if filtration is None:
+            return ()
+        route_ids = {route.route_id for route in profile.routes}
+        required = filtration.profile.filtered_route_id
+        if required not in route_ids:
+            return (f"ACTIVE_FILTER_ROUTE_WOULD_BE_REMOVED:{required}",)
+        return ()
+
+    def _apply_design_profile_configuration(
+        self,
+        profile: PondDesignProfile,
+        *,
+        actor: str,
+    ) -> ConfigurationTransaction:
+        before = self.model.design_profile_snapshot()
+        transaction = self._apply_governed_configuration(
+            scope="POND_DESIGN_PROFILE",
+            actor=actor,
+            reason="POND_DESIGN_PROFILE_CHANGE",
+            before=before,
+            after=profile.to_dict(),
+            preflight=lambda: self._design_profile_preflight(profile),
+            apply=lambda: self._original_configure_design_profile(profile),
+        )
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "POND_DESIGN_PROFILE_RECALCULATED",
+            {
+                "actor": actor,
+                "before_profile_id": before.get("profile_id"),
+                "before_revision": before.get("revision"),
+                "after_profile_id": profile.profile_id,
+                "after_revision": profile.revision,
+                "effective_volume_l": profile.effective_volume_l,
+                "provenance": profile.provenance,
+                "dependent_recalculation_required": True,
+                "hardware_lock": False,
+            },
+        )
+        return transaction
+
+    def _governed_model_configure_design_profile(
+        self,
+        profile: PondDesignProfile,
+    ) -> None:
+        self._apply_design_profile_configuration(profile, actor="engineering")
+
+    def _hydraulic_restriction_preflight(
+        self,
+        route_id: str,
+        throughput_factor: float,
+    ) -> tuple[str, ...]:
+        if self.model.hydraulics is None:
+            return ("HYDRAULIC_PROFILE_REQUIRED",)
+        if not self.model.hydraulics.has_route(route_id):
+            return (f"UNKNOWN_HYDRAULIC_ROUTE:{route_id}",)
+        if not 0.0 <= float(throughput_factor) <= 1.0:
+            return ("THROUGHPUT_FACTOR_OUT_OF_RANGE",)
+        return ()
+
+    def _apply_hydraulic_restriction_configuration(
+        self,
+        route_id: str,
+        throughput_factor: float,
+        *,
+        actor: str,
+    ) -> ConfigurationTransaction:
+        if self.model.hydraulics is None:
+            before_value = None
+        else:
+            before_value = self.model.hydraulics.route_restriction(route_id)
+        transaction = self._apply_governed_configuration(
+            scope=f"HYDRAULIC_RESTRICTION:{route_id}",
+            actor=actor,
+            reason="HYDRAULIC_ROUTE_RESTRICTION_CHANGE",
+            before={"route_id": route_id, "throughput_factor": before_value},
+            after={"route_id": route_id, "throughput_factor": float(throughput_factor)},
+            preflight=lambda: self._hydraulic_restriction_preflight(
+                route_id, throughput_factor
+            ),
+            apply=lambda: self._original_set_hydraulic_restriction(
+                route_id, throughput_factor
+            ),
+        )
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "HYDRAULIC_ROUTE_RESTRICTION_CHANGED",
+            {
+                "actor": actor,
+                "route_id": route_id,
+                "before": before_value,
+                "after": float(throughput_factor),
+            },
+        )
+        return transaction
+
+    def _governed_model_set_hydraulic_restriction(
+        self,
+        route_id: str,
+        throughput_factor: float,
+    ) -> None:
+        self._apply_hydraulic_restriction_configuration(
+            route_id,
+            throughput_factor,
+            actor="engineering",
+        )
 
     def _governed_configure_biological_profile(
         self,
@@ -334,29 +451,7 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         *,
         actor: str = "engineering",
     ) -> None:
-        before = self.model.design_profile_snapshot()
-
-        def preflight() -> tuple[str, ...]:
-            filtration = self.model.filtration
-            if filtration is None:
-                return ()
-            route_ids = {route.route_id for route in profile.routes}
-            required = filtration.profile.filtered_route_id
-            if required not in route_ids:
-                return (f"ACTIVE_FILTER_ROUTE_WOULD_BE_REMOVED:{required}",)
-            return ()
-
-        self._apply_governed_configuration(
-            scope="POND_DESIGN_PROFILE",
-            actor=actor,
-            reason="POND_DESIGN_PROFILE_CHANGE",
-            before=before,
-            after=profile.to_dict(),
-            preflight=preflight,
-            apply=lambda: super(ProductionDigitalTwinRuntime, self).configure_design_profile(
-                profile, actor=actor
-            ),
-        )
+        self._apply_design_profile_configuration(profile, actor=actor)
 
     def set_hydraulic_restriction(
         self,
@@ -365,30 +460,10 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         *,
         actor: str = "engineering",
     ) -> None:
-        if self.model.hydraulics is None:
-            before_value = None
-        else:
-            before_value = self.model.hydraulics.route_restriction(route_id)
-
-        def preflight() -> tuple[str, ...]:
-            if self.model.hydraulics is None:
-                return ("HYDRAULIC_PROFILE_REQUIRED",)
-            if not self.model.hydraulics.has_route(route_id):
-                return (f"UNKNOWN_HYDRAULIC_ROUTE:{route_id}",)
-            if not 0.0 <= float(throughput_factor) <= 1.0:
-                return ("THROUGHPUT_FACTOR_OUT_OF_RANGE",)
-            return ()
-
-        self._apply_governed_configuration(
-            scope=f"HYDRAULIC_RESTRICTION:{route_id}",
+        self._apply_hydraulic_restriction_configuration(
+            route_id,
+            throughput_factor,
             actor=actor,
-            reason="HYDRAULIC_ROUTE_RESTRICTION_CHANGE",
-            before={"route_id": route_id, "throughput_factor": before_value},
-            after={"route_id": route_id, "throughput_factor": float(throughput_factor)},
-            preflight=preflight,
-            apply=lambda: super(ProductionDigitalTwinRuntime, self).set_hydraulic_restriction(
-                route_id, throughput_factor, actor=actor
-            ),
         )
 
     def configure_module(
@@ -478,8 +553,12 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         main_failed = (
             main_asset is not None and main_asset.availability == AvailabilityState.FAILED
         )
+        low_flow_backup = (
+            backup_command is not None
+            and backup_command.reason == "LOW_FLOW_BACKUP"
+        )
         if self.recovery_supervisor.active is None and (
-            main_failed or backup_command is not None
+            main_failed or low_flow_backup
         ):
             self.recovery_supervisor.detect(
                 self.CIRCULATION_RECOVERY_PLAN_ID,
