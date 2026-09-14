@@ -35,14 +35,13 @@ class SourceWaterProfile:
             raise ValueError("source_reference is required")
         if not self.source_type:
             raise ValueError("source_type is required")
-        non_negative = (
+        for field_name in (
             "dissolved_oxygen_mg_l",
             "total_ammonia_nitrogen_mg_l",
             "nitrite_mg_l",
             "nitrate_mg_l",
             "alkalinity_mg_l_as_caco3",
-        )
-        for field_name in non_negative:
+        ):
             value = getattr(self, field_name)
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be non-negative when provided")
@@ -94,7 +93,12 @@ class WaterExchangePondModel(PondModel):
         "alkalinity_mg_l_as_caco3",
     )
 
-    def __init__(self, *args: Any, source_water: SourceWaterProfile | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        source_water: SourceWaterProfile | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.source_water = source_water
         self.cumulative_discharge_l = 0.0
@@ -121,7 +125,9 @@ class WaterExchangePondModel(PondModel):
             "cumulative_discharge_l": self.cumulative_discharge_l,
             "cumulative_refill_l": self.cumulative_refill_l,
             "last_exchange": self._last_exchange,
-            "discharge_only_concentration_change": "NONE_UNDER_WELL_MIXED_ASSUMPTION",
+            "discharge_only_concentration_change": (
+                "NONE_UNDER_WELL_MIXED_ASSUMPTION"
+            ),
             "ph_mixing_model": "BUFFER_WEIGHTED_HYDROGEN_ACTIVITY_SIMPLIFIED_V1",
             "ph_model_is_laboratory_equilibrium": False,
             "unknown_source_values_are_fabricated": False,
@@ -156,10 +162,12 @@ class WaterExchangePondModel(PondModel):
         source = exchange.get("source_water")
         self.source_water = SourceWaterProfile.from_dict(source) if source else None
         self.cumulative_discharge_l = max(
-            0.0, float(exchange.get("cumulative_discharge_l", 0.0))
+            0.0,
+            float(exchange.get("cumulative_discharge_l", 0.0)),
         )
         self.cumulative_refill_l = max(
-            0.0, float(exchange.get("cumulative_refill_l", 0.0))
+            0.0,
+            float(exchange.get("cumulative_refill_l", 0.0)),
         )
         last_exchange = exchange.get("last_exchange")
         self._last_exchange = dict(last_exchange) if last_exchange else None
@@ -288,7 +296,8 @@ class WaterExchangePondModel(PondModel):
                 "model": "BUFFER_WEIGHTED_HYDROGEN_ACTIVITY_SIMPLIFIED_V1",
             }
         hydrogen_activity = (
-            10 ** (-before) * pond_weight + 10 ** (-source_ph) * source_weight
+            10 ** (-before) * pond_weight
+            + 10 ** (-source_ph) * source_weight
         ) / denominator
         after = -math.log10(max(hydrogen_activity, 1e-14))
         self.state.ph = min(14.0, max(0.0, after))
@@ -310,9 +319,11 @@ class WaterExchangePondModel(PondModel):
             return super().step(seconds, actuator_effects)
 
         design_volume_l = self.hydraulics.profile.effective_volume_l
-        starting_volume_l = design_volume_l * min(
-            100.0, max(0.0, float(self.state.water_level_pct))
-        ) / 100.0
+        starting_volume_l = (
+            design_volume_l
+            * min(100.0, max(0.0, float(self.state.water_level_pct)))
+            / 100.0
+        )
 
         state = super().step(seconds, actuator_effects)
 
@@ -344,10 +355,10 @@ class WaterExchangePondModel(PondModel):
             ).get("last_backwash_discharge_l")
             backwash_discharge_l = max(0.0, float(last_discharge or 0.0))
 
-        total_requested_discharge_l = (
-            drain_requested_l + leak_requested_l + backwash_discharge_l
+        discharge_l = min(
+            starting_volume_l,
+            drain_requested_l + leak_requested_l + backwash_discharge_l,
         )
-        discharge_l = min(starting_volume_l, total_requested_discharge_l)
         remaining_volume_l = max(0.0, starting_volume_l - discharge_l)
         refill_l = min(
             top_up_requested_l,
