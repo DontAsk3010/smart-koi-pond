@@ -160,11 +160,15 @@ def test_temperature_do_kh_and_tan_follow_supported_source_water_mixing() -> Non
 
     model.step(60.0, {"top_up_valve": 1.0})
 
-    assert model.state.temperature_c == pytest.approx((28.0 * 800.0 + 24.0 * 100.0) / 900.0)
+    assert model.state.temperature_c == pytest.approx(
+        (28.0 * 800.0 + 24.0 * 100.0) / 900.0
+    )
     assert model.state.dissolved_oxygen_mg_l == pytest.approx(
         (6.0 * 800.0 + 8.0 * 100.0) / 900.0
     )
-    assert model.state.total_ammonia_nitrogen_mg_l == pytest.approx(1.0 * 800.0 / 900.0)
+    assert model.state.total_ammonia_nitrogen_mg_l == pytest.approx(
+        1.0 * 800.0 / 900.0
+    )
     assert model.state.alkalinity_mg_l_as_caco3 == pytest.approx(
         (100.0 * 800.0 + 50.0 * 100.0) / 900.0
     )
@@ -181,7 +185,9 @@ def test_ph_uses_explicit_simplified_buffer_model_not_linear_average() -> None:
     linear_average = (7.0 * 800.0 + 8.0 * 100.0) / 900.0
     assert model.state.ph != pytest.approx(linear_average)
     assert 7.0 < model.state.ph < 8.0
-    ph_evidence = model.water_exchange_snapshot()["last_exchange"]["parameter_results"]["ph"]
+    ph_evidence = model.water_exchange_snapshot()["last_exchange"][
+        "parameter_results"
+    ]["ph"]
     assert ph_evidence["status"] == "MODELED_SIMPLIFIED_BUFFER_WEIGHTED_H_ACTIVITY"
     assert ph_evidence["laboratory_equilibrium_claim"] is False
 
@@ -263,7 +269,10 @@ def test_historian_playback_and_browser_surface_use_canonical_exchange_state() -
                 alkalinity_mg_l_as_caco3=100.0,
                 waste_solids_g=50.0,
             ),
-            EnvironmentInputs(ambient_temperature_c=28.0, oxygen_demand_mg_l_per_hour=0.0),
+            EnvironmentInputs(
+                ambient_temperature_c=28.0,
+                oxygen_demand_mg_l_per_hour=0.0,
+            ),
             source_water=_source(nitrate_mg_l=0.0),
         ),
         SimulationControlPolicy(
@@ -283,6 +292,8 @@ def test_historian_playback_and_browser_surface_use_canonical_exchange_state() -
     snapshot = runtime.tick(0.0)
     assert snapshot.hydraulics["water_exchange"]["last_exchange"]["refill_l"] == 100.0
     frame = runtime.playback_frame(runtime.historian.latest_sequence)
-    assert frame.snapshot.hydraulics["water_exchange"]["last_exchange"]["refill_l"] == 100.0
+    assert frame["snapshot"]["hydraulics"]["water_exchange"]["last_exchange"][
+        "refill_l"
+    ] == 100.0
     assert "Source Water & Water Exchange" in COMPOSED_INDEX_HTML
     assert "configure_source_water_profile" in COMPOSED_INDEX_HTML
