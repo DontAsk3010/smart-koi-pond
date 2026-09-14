@@ -71,6 +71,16 @@ class PondModel:
             raise KeyError(parameter)
         setattr(self.state, attribute, float(value))
 
+    def actual_water_volume_l(self) -> float | None:
+        """Return current modeled pond-water volume from profile volume and water level."""
+        if self.hydraulics is None:
+            return None
+        level_fraction = min(
+            1.0,
+            max(0.0, float(self.state.water_level_pct) / 100.0),
+        )
+        return self.hydraulics.profile.effective_volume_l * level_fraction
+
     def _validate_filtration_route(self) -> None:
         if self.filtration is None:
             return
@@ -158,12 +168,18 @@ class PondModel:
                 "configured": False,
                 "provenance": "UNAVAILABLE",
                 "per_route_flow_modeled": False,
+                "actual_water_volume_l": None,
+                "actual_water_volume_provenance": "UNAVAILABLE",
                 "mechanical_filtration": self.mechanical_filtration_snapshot(),
             }
         return {
             "configured": True,
             "per_route_flow_modeled": True,
             **self.hydraulics.snapshot(),
+            "actual_water_volume_l": self.actual_water_volume_l(),
+            "actual_water_volume_provenance": "CALCULATED",
+            "actual_water_volume_basis": "EFFECTIVE_VOLUME_X_WATER_LEVEL",
+            "process_volume_integration_basis": "ACTUAL_MODELED_VOLUME_AT_STEP_START",
             "mechanical_filtration": self.mechanical_filtration_snapshot(),
         }
 
@@ -187,14 +203,9 @@ class PondModel:
                 "turbidity_ntu": None,
                 "water_clarity_conclusion": "NOT_ESTABLISHED",
             }
-        volume_l = (
-            self.hydraulics.profile.effective_volume_l
-            if self.hydraulics is not None
-            else None
-        )
         return self.filtration.snapshot(
             suspended_solids_g=self.state.waste_solids_g,
-            volume_l=volume_l,
+            volume_l=self.actual_water_volume_l(),
         )
 
     def _biological_truth_snapshot(self) -> dict[str, float | None]:
@@ -261,10 +272,11 @@ class PondModel:
         if self.biology is None or self.hydraulics is None:
             return 0.0
         profile = self.hydraulics.profile
+        actual_volume_l = self.actual_water_volume_l()
         return self.biology.step(
             self.state,
             seconds=seconds,
-            volume_l=profile.effective_volume_l,
+            volume_l=float(actual_volume_l or 0.0),
             biomass_kg=profile.biomass_kg,
             feed_kg_per_day=profile.feed_kg_per_day,
             circulation_flow_l_min=self.state.circulation_flow_l_min,
@@ -283,10 +295,11 @@ class PondModel:
             return None
         route_id = self.filtration.profile.filtered_route_id
         route_state = hydraulic_state["routes"][route_id]
+        actual_volume_l = self.actual_water_volume_l()
         result = self.filtration.step(
             self.state,
             seconds=seconds,
-            volume_l=self.hydraulics.profile.effective_volume_l,
+            volume_l=float(actual_volume_l or 0.0),
             route_flow_l_min=float(route_state["effective_flow_l_min"]),
             backwash_effect=self._effect(actuator_effects, "backwash_valve"),
         )
