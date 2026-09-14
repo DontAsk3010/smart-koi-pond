@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
-
 REFERENCE_STANDARD_METRIC_PROFILE_ID = "REFERENCE_STANDARD_METRIC_V1"
 
 
@@ -84,12 +83,12 @@ class PondDesignProfile:
     drain_flow_l_min: float | None = None
     biomass_kg: float | None = None
     feed_kg_per_day: float | None = None
+    provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
     length_m: float | None = None
     width_m: float | None = None
     water_depth_m: float | None = None
     reference_profile_id: str | None = None
     overridden_fields: tuple[str, ...] = ()
-    provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
 
     def __post_init__(self) -> None:
         if not self.profile_id:
@@ -152,6 +151,9 @@ class PondDesignProfile:
                 if data.get("feed_kg_per_day") is not None
                 else None
             ),
+            provenance=EngineeringProvenance.normalize(
+                data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
+            ),
             length_m=(
                 float(data["length_m"]) if data.get("length_m") is not None else None
             ),
@@ -168,9 +170,8 @@ class PondDesignProfile:
                 if data.get("reference_profile_id") is not None
                 else None
             ),
-            overridden_fields=tuple(str(item) for item in data.get("overridden_fields", ())),
-            provenance=EngineeringProvenance.normalize(
-                data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
+            overridden_fields=tuple(
+                str(item) for item in data.get("overridden_fields", ())
             ),
         )
 
@@ -205,12 +206,12 @@ def reference_standard_metric_v1() -> PondDesignProfile:
                 provenance=EngineeringProvenance.EXPERT_REFERENCE_PROFILE,
             ),
         ),
+        provenance=EngineeringProvenance.EXPERT_REFERENCE_PROFILE,
         length_m=4.0,
         width_m=2.0,
         water_depth_m=1.5,
         reference_profile_id=REFERENCE_STANDARD_METRIC_PROFILE_ID,
         overridden_fields=(),
-        provenance=EngineeringProvenance.EXPERT_REFERENCE_PROFILE,
     )
 
 
