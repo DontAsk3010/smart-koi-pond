@@ -22,49 +22,73 @@ INTEGRATED_VIRTUAL_POND_MATRIX: tuple[IntegratedVirtualPondCase, ...] = (
     IntegratedVirtualPondCase(
         "ivp_01_honest_startup",
         GateStatus.PASS,
-        "Runnable browser entry point starts with process profiles INPUT REQUIRED and no energized equipment rather than demo-only hidden engineering defaults.",
+        (
+            "Runnable browser entry point starts with process profiles INPUT REQUIRED "
+            "and no energized equipment rather than hidden engineering defaults."
+        ),
         "test_integrated_entrypoint_starts_honestly_input_required",
     ),
     IntegratedVirtualPondCase(
         "ivp_02_full_stack_binding",
         GateStatus.PASS,
-        "Explicit owner/test configuration binds pond profile, hydraulics, biology and mechanical filtration to one canonical runtime publication.",
+        (
+            "Explicit owner/test configuration binds pond profile, hydraulics, biology "
+            "and mechanical filtration to one canonical runtime publication."
+        ),
         "test_full_stack_configuration_becomes_visible_from_canonical_publication",
     ),
     IntegratedVirtualPondCase(
         "ivp_03_unknown_clarity_evidence",
         GateStatus.PASS,
-        "TSS may be calculated while turbidity and water-clarity conclusion remain unavailable/not-established without a governed correlation.",
+        (
+            "TSS may be calculated while turbidity and water-clarity conclusion remain "
+            "unavailable/not-established without a governed correlation."
+        ),
         "test_unknown_turbidity_remains_unavailable_in_visible_state",
     ),
     IntegratedVirtualPondCase(
         "ivp_04_reconfigurable_volume",
         GateStatus.PASS,
-        "Owner volume revision recalculates hydraulic requirements in the same running Digital Twin without hardware lock semantics.",
+        (
+            "Owner volume revision recalculates hydraulic requirements in the same "
+            "running Digital Twin without hardware lock semantics."
+        ),
         "test_owner_volume_revision_recalculates_requirement_in_same_runtime",
     ),
     IntegratedVirtualPondCase(
         "ivp_05_environment_disturbance",
         GateStatus.PASS,
-        "Engineering water-state disturbances travel through the governed Scenario Controller and become visible in canonical state/classification.",
+        (
+            "Engineering water-state disturbances travel through the governed Scenario "
+            "Controller and become visible in canonical state/classification."
+        ),
         "test_environment_disturbance_is_visible_through_canonical_state",
     ),
     IntegratedVirtualPondCase(
         "ivp_06_fault_truth",
         GateStatus.PASS,
-        "A failed-off circulation asset removes false process-flow animation and exposes the same failure through runtime and process projection.",
+        (
+            "A failed-off circulation asset removes false process-flow animation and "
+            "exposes the same failure through runtime and process projection."
+        ),
         "test_actuator_fault_removes_false_flow_from_visible_process_state",
     ),
     IntegratedVirtualPondCase(
         "ivp_07_historian_playback",
         GateStatus.PASS,
-        "Historian/playback preserves the integrated pond profile, hydraulics and process projection rather than rendering a disconnected report.",
+        (
+            "Historian/playback preserves the integrated pond profile, hydraulics and "
+            "process projection rather than rendering a disconnected report."
+        ),
         "test_historian_playback_preserves_integrated_process_state",
     ),
     IntegratedVirtualPondCase(
         "ivp_08_browser_configuration_surface",
         GateStatus.PASS,
-        "Browser exposes explicit pond, biology and filtration configuration plus live evidence through canonical API commands with INPUT REQUIRED semantics.",
+        (
+            "Browser exposes explicit pond, biology and filtration configuration plus "
+            "live evidence through canonical API commands with INPUT REQUIRED semantics."
+        ),
         "test_browser_surface_exposes_integrated_setup_without_hidden_process_values",
     ),
 )
