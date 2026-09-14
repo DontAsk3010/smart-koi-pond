@@ -45,72 +45,6 @@ class _GovernedRuntimeHistorian(RuntimeHistorian):
         )
 
 
-class _GovernedModelProxy:
-    """Keep direct model configuration calls inside the governed transaction boundary."""
-
-    def __init__(self, runtime: ProductionDigitalTwinRuntime, delegate: Any) -> None:
-        self._runtime = runtime
-        self._delegate = delegate
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._delegate, name)
-
-    def configure_biological_profile(self, profile: BiologicalProcessProfile) -> None:
-        before = self._delegate.biological_snapshot()
-        self._runtime._apply_governed_configuration(
-            scope="BIOLOGICAL_PROCESS_PROFILE",
-            actor="engineering",
-            reason="BIOLOGICAL_PROCESS_PROFILE_CHANGE",
-            before=before,
-            after=profile.to_dict(),
-            preflight=lambda: (
-                ()
-                if self._delegate.hydraulics is not None
-                else ("HYDRAULIC_PROFILE_REQUIRED",)
-            ),
-            apply=lambda: self._delegate.configure_biological_profile(profile),
-        )
-
-    def configure_mechanical_filtration_profile(
-        self,
-        profile: MechanicalFiltrationProfile,
-    ) -> None:
-        before = self._delegate.mechanical_filtration_snapshot()
-
-        def preflight() -> tuple[str, ...]:
-            if self._delegate.hydraulics is None:
-                return ("HYDRAULIC_PROFILE_REQUIRED",)
-            if not self._delegate.hydraulics.has_route(profile.filtered_route_id):
-                return (f"FILTER_ROUTE_NOT_CONFIGURED:{profile.filtered_route_id}",)
-            return ()
-
-        self._runtime._apply_governed_configuration(
-            scope="MECHANICAL_FILTRATION_PROFILE",
-            actor="engineering",
-            reason="MECHANICAL_FILTRATION_PROFILE_CHANGE",
-            before=before,
-            after=profile.to_dict(),
-            preflight=preflight,
-            apply=lambda: self._delegate.configure_mechanical_filtration_profile(profile),
-        )
-
-    def configure_source_water_profile(self, profile: SourceWaterProfile) -> None:
-        configure = getattr(self._delegate, "configure_source_water_profile", None)
-        if configure is None:
-            raise RuntimeError("runtime model does not support source-water mixing")
-        snapshot = getattr(self._delegate, "source_water_snapshot", None)
-        before = snapshot() if snapshot is not None else {"configured": False}
-        self._runtime._apply_governed_configuration(
-            scope="SOURCE_WATER_PROFILE",
-            actor="engineering",
-            reason="SOURCE_WATER_PROFILE_CHANGE",
-            before=before,
-            after=profile.to_dict(),
-            preflight=lambda: (),
-            apply=lambda: configure(profile),
-        )
-
-
 class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
     """Production-lineage runtime with Handbook V0.16 governed change/recovery.
 
@@ -146,9 +80,104 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
                 verification_asset_id="backup_pump",
             )
         )
-        self._model_delegate = self.model
-        self.model = _GovernedModelProxy(self, self._model_delegate)
+        self._install_model_configuration_hooks()
         self.historian = _GovernedRuntimeHistorian(self, historian_path)
+
+    def _install_model_configuration_hooks(self) -> None:
+        """Govern direct model mutations without replacing the accepted model object.
+
+        Existing source-water/mass-balance contracts rely on the concrete model type.
+        Instance-level hooks preserve that type while routing material mutation through
+        the V0.16 transaction boundary.
+        """
+        self._original_configure_biological_profile = (
+            self.model.configure_biological_profile
+        )
+        self._original_configure_mechanical_filtration_profile = (
+            self.model.configure_mechanical_filtration_profile
+        )
+        self._original_configure_source_water_profile = getattr(
+            self.model,
+            "configure_source_water_profile",
+            None,
+        )
+        setattr(
+            self.model,
+            "configure_biological_profile",
+            self._governed_configure_biological_profile,
+        )
+        setattr(
+            self.model,
+            "configure_mechanical_filtration_profile",
+            self._governed_configure_mechanical_filtration_profile,
+        )
+        if self._original_configure_source_water_profile is not None:
+            setattr(
+                self.model,
+                "configure_source_water_profile",
+                self._governed_configure_source_water_profile,
+            )
+
+    def _governed_configure_biological_profile(
+        self,
+        profile: BiologicalProcessProfile,
+    ) -> None:
+        before = self.model.biological_snapshot()
+        self._apply_governed_configuration(
+            scope="BIOLOGICAL_PROCESS_PROFILE",
+            actor="engineering",
+            reason="BIOLOGICAL_PROCESS_PROFILE_CHANGE",
+            before=before,
+            after=profile.to_dict(),
+            preflight=lambda: (
+                ()
+                if self.model.hydraulics is not None
+                else ("HYDRAULIC_PROFILE_REQUIRED",)
+            ),
+            apply=lambda: self._original_configure_biological_profile(profile),
+        )
+
+    def _governed_configure_mechanical_filtration_profile(
+        self,
+        profile: MechanicalFiltrationProfile,
+    ) -> None:
+        before = self.model.mechanical_filtration_snapshot()
+
+        def preflight() -> tuple[str, ...]:
+            if self.model.hydraulics is None:
+                return ("HYDRAULIC_PROFILE_REQUIRED",)
+            if not self.model.hydraulics.has_route(profile.filtered_route_id):
+                return (f"FILTER_ROUTE_NOT_CONFIGURED:{profile.filtered_route_id}",)
+            return ()
+
+        self._apply_governed_configuration(
+            scope="MECHANICAL_FILTRATION_PROFILE",
+            actor="engineering",
+            reason="MECHANICAL_FILTRATION_PROFILE_CHANGE",
+            before=before,
+            after=profile.to_dict(),
+            preflight=preflight,
+            apply=lambda: self._original_configure_mechanical_filtration_profile(profile),
+        )
+
+    def _governed_configure_source_water_profile(
+        self,
+        profile: SourceWaterProfile,
+    ) -> None:
+        configure = self._original_configure_source_water_profile
+        if configure is None:
+            raise RuntimeError("runtime model does not support source-water mixing")
+        snapshot = getattr(self.model, "source_water_snapshot", None)
+        before = snapshot() if snapshot is not None else {"configured": False}
+        self._apply_governed_configuration(
+            scope="SOURCE_WATER_PROFILE",
+            actor="engineering",
+            reason="SOURCE_WATER_PROFILE_CHANGE",
+            before=before,
+            after=profile.to_dict(),
+            preflight=lambda: (),
+            apply=lambda: configure(profile),
+        )
 
     def _configuration_event(self, code: str, payload: dict[str, Any]) -> None:
         self.events.append(
@@ -171,7 +200,7 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
             "execution_mode": self.execution_mode.value,
             "sensor_adapter_state": self.sensors.checkpoint_state(),
             "actuator_adapter_state": self.actuators.checkpoint_state(),
-            "model_engineering_state": self._model_delegate.checkpoint_state(),
+            "model_engineering_state": self.model.checkpoint_state(),
             "capability_registry_state": self.capability_registry.checkpoint_state(),
         }
 
@@ -179,7 +208,7 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         self.execution_mode = ExecutionMode(state["execution_mode"])
         self.sensors.restore_state(state.get("sensor_adapter_state"))
         self.actuators.restore_state(state.get("actuator_adapter_state"))
-        self._model_delegate.restore_engineering_state(state.get("model_engineering_state"))
+        self.model.restore_engineering_state(state.get("model_engineering_state"))
         self.capability_registry.restore_state(state.get("capability_registry_state"))
         self._sync_structural_module_state()
         self._validate_io_contract(self.execution_mode)
@@ -311,10 +340,10 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         *,
         actor: str = "engineering",
     ) -> None:
-        before = self._model_delegate.design_profile_snapshot()
+        before = self.model.design_profile_snapshot()
 
         def preflight() -> tuple[str, ...]:
-            filtration = self._model_delegate.filtration
+            filtration = self.model.filtration
             if filtration is None:
                 return ()
             route_ids = {route.route_id for route in profile.routes}
@@ -342,15 +371,15 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         *,
         actor: str = "engineering",
     ) -> None:
-        if self._model_delegate.hydraulics is None:
+        if self.model.hydraulics is None:
             before_value = None
         else:
-            before_value = self._model_delegate.hydraulics.route_restriction(route_id)
+            before_value = self.model.hydraulics.route_restriction(route_id)
 
         def preflight() -> tuple[str, ...]:
-            if self._model_delegate.hydraulics is None:
+            if self.model.hydraulics is None:
                 return ("HYDRAULIC_PROFILE_REQUIRED",)
-            if not self._model_delegate.hydraulics.has_route(route_id):
+            if not self.model.hydraulics.has_route(route_id):
                 return (f"UNKNOWN_HYDRAULIC_ROUTE:{route_id}",)
             if not 0.0 <= float(throughput_factor) <= 1.0:
                 return ("THROUGHPUT_FACTOR_OUT_OF_RANGE",)
@@ -455,7 +484,9 @@ class ProductionDigitalTwinRuntime(DigitalTwinRuntime):
         main_failed = (
             main_asset is not None and main_asset.availability == AvailabilityState.FAILED
         )
-        if self.recovery_supervisor.active is None and (main_failed or backup_command is not None):
+        if self.recovery_supervisor.active is None and (
+            main_failed or backup_command is not None
+        ):
             self.recovery_supervisor.detect(
                 self.CIRCULATION_RECOVERY_PLAN_ID,
                 now=now,
