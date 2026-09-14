@@ -47,7 +47,7 @@ def test_explicit_nitrate_mass_is_conserved_across_discharge_and_refill() -> Non
     runtime.configure_design_profile(_design())
     assert isinstance(runtime.model, WaterExchangePondModel)
     runtime.model.configure_source_water_profile(_source(nitrate_mg_l=10.0))
-    runtime.model.set_truth("nitrate", 40.0)
+    runtime.model.set_truth("nitrate_mg_l", 40.0)
     runtime.model.state.water_level_pct = 100.0
 
     initial_mass_mg = 40.0 * 1000.0
@@ -72,7 +72,7 @@ def test_governed_water_change_workflow_drives_real_mass_balance_path() -> None:
     runtime.configure_design_profile(_design())
     assert isinstance(runtime.model, WaterExchangePondModel)
     runtime.model.configure_source_water_profile(_source(nitrate_mg_l=0.0))
-    runtime.model.set_truth("nitrate", 40.0)
+    runtime.model.set_truth("nitrate_mg_l", 40.0)
     runtime.model.state.water_level_pct = 100.0
 
     runtime.start_water_change(
