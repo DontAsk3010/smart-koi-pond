@@ -8,6 +8,7 @@ from smart_koi_pond.dashboard.animated_pond_ui import (
     ANIMATED_POND_STYLE,
 )
 from smart_koi_pond.dashboard.fault_controls_ui import FAULT_CONTROLS_UI_SCRIPT
+from smart_koi_pond.dashboard.integrated_control_ui import INTEGRATED_CONTROL_UI_SCRIPT
 from smart_koi_pond.dashboard.integrated_virtual_pond_ui import (
     INTEGRATED_VIRTUAL_POND_SCRIPT,
     INTEGRATED_VIRTUAL_POND_STYLE,
@@ -25,7 +26,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{MODULAR_UI_SCRIPT}</script>"
         f"<script>{ANIMATED_POND_SCRIPT}</script>"
         f"<script>{FAULT_CONTROLS_UI_SCRIPT}</script>"
-        f"<script>{INTEGRATED_VIRTUAL_POND_SCRIPT}</script></body>"
+        f"<script>{INTEGRATED_VIRTUAL_POND_SCRIPT}</script>"
+        f"<script>{INTEGRATED_CONTROL_UI_SCRIPT}</script></body>"
     ),
 )
 
