@@ -158,11 +158,13 @@ class PondModel:
                 "configured": False,
                 "provenance": "UNAVAILABLE",
                 "per_route_flow_modeled": False,
+                "mechanical_filtration": self.mechanical_filtration_snapshot(),
             }
         return {
             "configured": True,
             "per_route_flow_modeled": True,
             **self.hydraulics.snapshot(),
+            "mechanical_filtration": self.mechanical_filtration_snapshot(),
         }
 
     def biological_snapshot(self) -> dict[str, Any]:
