@@ -102,6 +102,11 @@ jobs:
           python -m smart_koi_pond.scenarios.actual_volume_process_coupling_matrix
           --output artifacts/actual-volume-process-coupling-${{ matrix.python-version }}.json
 
+      - name: Build governed reconfiguration/self-recovery evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.governed_self_recovery_matrix
+          --output artifacts/governed-reconfiguration-self-recovery-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -179,3 +184,9 @@ jobs:
         with:
           name: actual-volume-process-coupling-python-${{ matrix.python-version }}
           path: artifacts/actual-volume-process-coupling-${{ matrix.python-version }}.json
+
+      - name: Upload governed reconfiguration/self-recovery evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: governed-reconfiguration-self-recovery-python-${{ matrix.python-version }}
+          path: artifacts/governed-reconfiguration-self-recovery-${{ matrix.python-version }}.json
