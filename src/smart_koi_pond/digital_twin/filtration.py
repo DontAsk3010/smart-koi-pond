@@ -102,6 +102,7 @@ class MechanicalFiltrationModel:
         self._last_backwash_removed_g = 0.0
         self._last_backwash_discharge_l: float | None = None
         self._last_route_flow_l_min = 0.0
+        self._last_water_volume_l: float | None = None
 
     def configure_profile(self, profile: MechanicalFiltrationProfile) -> None:
         self.profile = profile
@@ -127,8 +128,8 @@ class MechanicalFiltrationModel:
     ) -> dict[str, float | None]:
         if seconds < 0:
             raise ValueError("seconds must be non-negative")
-        if volume_l <= 0:
-            raise ValueError("volume_l must be positive")
+        if volume_l < 0:
+            raise ValueError("volume_l must be non-negative")
         if route_flow_l_min < 0:
             raise ValueError("route_flow_l_min must be non-negative")
 
@@ -136,7 +137,9 @@ class MechanicalFiltrationModel:
         captured_g: float | None = None
         if state.waste_solids_g is not None:
             suspended_g = max(0.0, float(state.waste_solids_g))
-            processed_turnovers = route_flow_l_min * minutes / volume_l
+            processed_turnovers = (
+                route_flow_l_min * minutes / volume_l if volume_l > 0 else 0.0
+            )
             capture_fraction = 0.0
             if route_flow_l_min > 0 and processed_turnovers > 0:
                 capture_fraction = 1.0 - (
@@ -147,9 +150,10 @@ class MechanicalFiltrationModel:
             self.captured_solids_g += captured_g
 
         bounded_backwash = min(1.0, max(0.0, float(backwash_effect)))
+        effective_backwash = bounded_backwash if volume_l > 0 else 0.0
         removed_g = min(
             self.captured_solids_g,
-            self.profile.backwash_solids_removal_g_per_min * minutes * bounded_backwash,
+            self.profile.backwash_solids_removal_g_per_min * minutes * effective_backwash,
         )
         self.captured_solids_g -= removed_g
         self.cumulative_backwash_removed_g += removed_g
@@ -159,19 +163,16 @@ class MechanicalFiltrationModel:
             requested_discharge_l = (
                 self.profile.backwash_discharge_flow_l_min
                 * minutes
-                * bounded_backwash
+                * effective_backwash
             )
-            available_water_l = volume_l * min(
-                100.0,
-                max(0.0, float(state.water_level_pct)),
-            ) / 100.0
-            discharge_l = min(requested_discharge_l, available_water_l)
+            discharge_l = min(requested_discharge_l, volume_l)
             self.cumulative_backwash_discharge_l += discharge_l
 
         self._last_captured_g = captured_g
         self._last_backwash_removed_g = removed_g
         self._last_backwash_discharge_l = discharge_l
         self._last_route_flow_l_min = route_flow_l_min
+        self._last_water_volume_l = volume_l
         return {
             "captured_g": captured_g,
             "backwash_removed_g": removed_g,
@@ -210,6 +211,9 @@ class MechanicalFiltrationModel:
                 else "BELOW_CONFIGURED_CAPACITY"
             ),
             "process_throughput_factor": self.process_throughput_factor,
+            "water_volume_l": volume_l,
+            "water_volume_basis": "ACTUAL_MODELED_VOLUME_AT_STEP_START",
+            "last_process_water_volume_l": self._last_water_volume_l,
             "last_route_flow_l_min": self._last_route_flow_l_min,
             "last_captured_g": self._last_captured_g,
             "last_backwash_removed_g": self._last_backwash_removed_g,
@@ -249,6 +253,7 @@ class MechanicalFiltrationModel:
             "last_backwash_removed_g": self._last_backwash_removed_g,
             "last_backwash_discharge_l": self._last_backwash_discharge_l,
             "last_route_flow_l_min": self._last_route_flow_l_min,
+            "last_water_volume_l": self._last_water_volume_l,
         }
 
     @classmethod
@@ -277,5 +282,9 @@ class MechanicalFiltrationModel:
         )
         model._last_route_flow_l_min = max(
             0.0, float(data.get("last_route_flow_l_min", 0.0))
+        )
+        last_volume = data.get("last_water_volume_l")
+        model._last_water_volume_l = (
+            max(0.0, float(last_volume)) if last_volume is not None else None
         )
         return model

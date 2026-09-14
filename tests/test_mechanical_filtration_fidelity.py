@@ -78,7 +78,7 @@ def make_model(*, waste_solids_g: float | None = 100.0) -> PondModel:
             27.0,
             6.0,
             7.2,
-            85.0,
+            100.0,
             waste_solids_g=waste_solids_g,
         ),
         EnvironmentInputs(27.0, 0.0),

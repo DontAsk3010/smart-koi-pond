@@ -97,6 +97,11 @@ jobs:
           python -m smart_koi_pond.scenarios.reference_pond_profile_matrix
           --output artifacts/reference-pond-profile-fidelity-${{ matrix.python-version }}.json
 
+      - name: Build actual-volume process coupling evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.actual_volume_process_coupling_matrix
+          --output artifacts/actual-volume-process-coupling-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -168,3 +173,9 @@ jobs:
         with:
           name: reference-pond-profile-fidelity-python-${{ matrix.python-version }}
           path: artifacts/reference-pond-profile-fidelity-${{ matrix.python-version }}.json
+
+      - name: Upload actual-volume process coupling evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-volume-process-coupling-python-${{ matrix.python-version }}
+          path: artifacts/actual-volume-process-coupling-${{ matrix.python-version }}.json
