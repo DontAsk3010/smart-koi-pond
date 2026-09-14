@@ -7,6 +7,7 @@ from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
+from smart_koi_pond.digital_twin.water_exchange import WaterExchangePondModel
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import PondState
 
@@ -19,8 +20,9 @@ def build_integrated_virtual_runtime(
 
     The base water values below are simulation initial-state values only. They are not
     pond measurements, hardware sizing facts, biological engineering references, or
-    production setpoints. Pond/hydraulic, biological and mechanical-filtration profiles
-    remain explicitly unconfigured until supplied through governed configuration paths.
+    production setpoints. Pond/hydraulic, biological, mechanical-filtration and
+    source-water profiles remain explicitly unconfigured until supplied through
+    governed configuration paths.
     """
     policy = SimulationControlPolicy(
         do_watch_below=5.0,
@@ -43,7 +45,7 @@ def build_integrated_virtual_runtime(
         ph_emergency_above=9.0,
     )
     runtime = DigitalTwinRuntime(
-        PondModel(
+        WaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
                 dissolved_oxygen_mg_l=6.0,
@@ -74,6 +76,7 @@ def build_integrated_virtual_runtime(
             "pond_profile": "INPUT_REQUIRED",
             "biological_profile": "INPUT_REQUIRED",
             "mechanical_filtration_profile": "INPUT_REQUIRED",
+            "source_water_profile": "INPUT_REQUIRED",
             "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
             "simulation_initial_state_is_physical_measurement": False,
@@ -139,7 +142,10 @@ def main() -> None:
     service = RuntimeApplicationService(runtime)
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
-    print("Pond/hydraulic, biology and filter facts: INPUT REQUIRED until configured")
+    print(
+        "Pond/hydraulic, biology, filter and source-water facts: "
+        "INPUT REQUIRED until configured"
+    )
     print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)
 
