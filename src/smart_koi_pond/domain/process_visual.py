@@ -14,14 +14,14 @@ class VisualAssetPath:
     asset_id: str
     feedback_on: bool
     availability: str
-    effectiveness: float
+    effectiveness: float | None
     motion_active: bool
     verification_status: str | None
 
 
 @dataclass(slots=True, frozen=True)
 class CirculationVisualState:
-    measured_total_flow_l_min: float
+    measured_total_flow_l_min: float | None
     flow_motion_active: bool
     primary: VisualAssetPath
     backup: VisualAssetPath
@@ -39,7 +39,7 @@ class AerationVisualState:
 
 @dataclass(slots=True, frozen=True)
 class WaterManagementVisualState:
-    water_level_pct: float
+    water_level_pct: float | None
     top_up: VisualAssetPath
     drain: VisualAssetPath
     backwash: VisualAssetPath
@@ -73,7 +73,7 @@ class ProcessVisualState:
     classification: str
     operating_mode: str
     operating_phase: str
-    dissolved_oxygen_mg_l: float
+    dissolved_oxygen_mg_l: float | None
     circulation: CirculationVisualState
     aeration: AerationVisualState
     water_management: WaterManagementVisualState
@@ -108,6 +108,21 @@ def _optional_number(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _bounded_optional_number(
+    value: Any,
+    *,
+    low: float,
+    high: float | None = None,
+) -> float | None:
+    number = _optional_number(value)
+    if number is None:
+        return None
+    number = max(low, number)
+    if high is not None:
+        number = min(high, number)
+    return number
 
 
 def _verification_status(
@@ -148,15 +163,16 @@ def _asset_path(
             asset_id=asset_id,
             feedback_on=False,
             availability="UNSUPPORTED",
-            effectiveness=0.0,
+            effectiveness=None,
             motion_active=False,
             verification_status=None,
         )
 
     feedback_on = bool(_get(asset, "feedback_on", False))
-    effectiveness = max(
-        0.0,
-        min(1.0, _number(_get(asset, "effectiveness", 1.0), 1.0)),
+    effectiveness = _bounded_optional_number(
+        _get(asset, "effectiveness"),
+        low=0.0,
+        high=1.0,
     )
     availability = _text(_get(asset, "availability"))
     unavailable = availability in {
@@ -176,6 +192,7 @@ def _asset_path(
         motion_active=(
             process_motion_allowed
             and feedback_on
+            and effectiveness is not None
             and effectiveness > 0.0
             and not unavailable
         ),
@@ -281,16 +298,20 @@ def project_process_visual(
     operating = _get(snapshot, "operating_status", {}) or {}
     classification = _get(snapshot, "classification", {}) or {}
 
-    total_flow = max(0.0, _number(_get(pond, "circulation_flow_l_min", 0.0)))
+    total_flow = _bounded_optional_number(
+        _get(pond, "circulation_flow_l_min"),
+        low=0.0,
+    )
+    flow_available = total_flow is not None
     primary_pump = _asset_path(
         snapshot,
         "main_pump",
-        process_motion_allowed=total_flow > 0.0,
+        process_motion_allowed=flow_available and total_flow > 0.0,
     )
     backup_pump = _asset_path(
         snapshot,
         "backup_pump",
-        process_motion_allowed=total_flow > 0.0,
+        process_motion_allowed=flow_available and total_flow > 0.0,
     )
     active_routes = tuple(
         path.asset_id
@@ -344,9 +365,30 @@ def project_process_visual(
     )
     quantitative_backwash_rate = (
         configured_backwash_rate * backwash.effectiveness
-        if backwash.motion_active and configured_backwash_rate is not None
+        if (
+            backwash.motion_active
+            and backwash.effectiveness is not None
+            and configured_backwash_rate is not None
+        )
         else None
     )
+
+    dissolved_oxygen = _bounded_optional_number(
+        _get(pond, "dissolved_oxygen_mg_l"),
+        low=0.0,
+    )
+    water_level = _bounded_optional_number(
+        _get(pond, "water_level_pct"),
+        low=0.0,
+        high=100.0,
+    )
+    availability_limitations: list[str] = []
+    if total_flow is None:
+        availability_limitations.append("CIRCULATION_FLOW_UNAVAILABLE")
+    if dissolved_oxygen is None:
+        availability_limitations.append("DISSOLVED_OXYGEN_UNAVAILABLE")
+    if water_level is None:
+        availability_limitations.append("WATER_LEVEL_UNAVAILABLE")
 
     alarms = _get(snapshot, "alarms", ()) or ()
     active_alarm_codes = tuple(
@@ -368,13 +410,10 @@ def project_process_visual(
         classification=_text(_get(classification, "state")),
         operating_mode=_text(_get(snapshot, "operating_mode")),
         operating_phase=_text(_get(operating, "phase")),
-        dissolved_oxygen_mg_l=max(
-            0.0,
-            _number(_get(pond, "dissolved_oxygen_mg_l", 0.0)),
-        ),
+        dissolved_oxygen_mg_l=dissolved_oxygen,
         circulation=CirculationVisualState(
             measured_total_flow_l_min=total_flow,
-            flow_motion_active=bool(active_routes) and total_flow > 0.0,
+            flow_motion_active=bool(active_routes) and flow_available and total_flow > 0.0,
             primary=primary_pump,
             backup=backup_pump,
             active_route_ids=active_routes,
@@ -387,10 +426,7 @@ def project_process_visual(
             active_source_ids=active_aeration,
         ),
         water_management=WaterManagementVisualState(
-            water_level_pct=max(
-                0.0,
-                min(100.0, _number(_get(pond, "water_level_pct", 0.0))),
-            ),
+            water_level_pct=water_level,
             top_up=top_up,
             drain=drain,
             backwash=backwash,
@@ -400,5 +436,9 @@ def project_process_visual(
         ),
         mechanical_filtration=filtration,
         active_alarm_codes=active_alarm_codes,
-        limitations=(*route_limitations, *filtration_limitations),
+        limitations=(
+            *route_limitations,
+            *filtration_limitations,
+            *availability_limitations,
+        ),
     )
