@@ -109,6 +109,24 @@ SOURCE_WATER_EXCHANGE_MATRIX: tuple[SourceWaterExchangeCase, ...] = (
         ),
         "test_source_water_ui_backwash_uses_real_backwash_valve_workflow",
     ),
+    SourceWaterExchangeCase(
+        "swe_12_explicit_dissolved_mass_conservation",
+        GateStatus.PASS,
+        (
+            "Numerical nitrate mass before discharge equals remaining plus removed mass, "
+            "and post-refill mass equals remaining plus incoming source-water mass."
+        ),
+        "test_explicit_nitrate_mass_is_conserved_across_discharge_and_refill",
+    ),
+    SourceWaterExchangeCase(
+        "swe_13_governed_water_change_end_to_end",
+        GateStatus.PASS,
+        (
+            "The WATER_CHANGE workflow drives drain/refill actuator ownership through "
+            "the same mass-balance model and returns to NORMAL_AUTO after recovery."
+        ),
+        "test_governed_water_change_workflow_drives_real_mass_balance_path",
+    ),
 )
 
 
