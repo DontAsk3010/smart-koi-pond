@@ -22,55 +22,82 @@ INTEGRATED_BIOLOGY_MATRIX: tuple[BiologyCase, ...] = (
     BiologyCase(
         "bio_01_no_fabricated_missing_input",
         GateStatus.PASS,
-        "Missing biomass/feed/chemistry remains explicit INPUT_REQUIRED instead of synthetic values.",
+        (
+            "Missing biomass/feed/chemistry remains explicit INPUT_REQUIRED "
+            "instead of synthetic values."
+        ),
         "test_missing_biological_inputs_remain_input_required_without_fabrication",
     ),
     BiologyCase(
         "bio_02_metric_units",
         GateStatus.PASS,
-        "Canonical biological configuration and process output use SI/metric and aquaculture units.",
+        (
+            "Canonical biological configuration and process output use SI/metric "
+            "and aquaculture units."
+        ),
         "test_metric_units_and_explicit_provenance_are_canonical",
     ),
     BiologyCase(
         "bio_03_feed_biomass_nitrogen_path",
         GateStatus.PASS,
-        "Explicit feed/biomass input drives oxygen demand, waste, TAN, nitrite, nitrate and buffering response.",
+        (
+            "Explicit feed/biomass input drives oxygen demand, waste, TAN, nitrite, "
+            "nitrate and buffering response."
+        ),
         "test_feed_and_biomass_drive_oxygen_demand_waste_and_nitrogen_cycle",
     ),
     BiologyCase(
         "bio_04_do_flow_limit_nitrification",
         GateStatus.PASS,
-        "Insufficient oxygen or hydraulic support constrains modeled biofilter conversion instead of hiding the limitation.",
+        (
+            "Insufficient oxygen or hydraulic support constrains modeled biofilter "
+            "conversion instead of hiding the limitation."
+        ),
         "test_low_do_or_low_flow_constrains_biofilter_conversion",
     ),
     BiologyCase(
         "bio_05_safe_water_quality_support",
         GateStatus.PASS,
-        "High TAN uses safe aeration/circulation support and feeding inhibit without opening automatic chemical dosing.",
+        (
+            "High TAN uses safe aeration/circulation support and feeding inhibit "
+            "without opening automatic chemical dosing."
+        ),
         "test_high_tan_uses_safe_support_and_feed_inhibit_without_chemical_dosing",
     ),
     BiologyCase(
         "bio_06_environment_disturbance_authority",
         GateStatus.PASS,
-        "Manual virtual water-condition changes are engineering-role gated, audited and published through the canonical service.",
+        (
+            "Manual virtual water-condition changes are engineering-role gated, "
+            "audited and published through the canonical service."
+        ),
         "test_environment_disturbance_is_role_gated_audited_and_publishable",
     ),
     BiologyCase(
         "bio_07_automatic_disturbance_trigger",
         GateStatus.PASS,
-        "Automatic scenarios can apply the same governed environmental disturbance path without creating a second engine.",
+        (
+            "Automatic scenarios apply the same governed environmental disturbance "
+            "path without creating a second engine."
+        ),
         "test_automatic_environment_trigger_uses_same_scenario_authority",
     ),
     BiologyCase(
         "bio_08_restart_continuity",
         GateStatus.PASS,
-        "Safe runtime reset preserves biological profile and chemistry while de-energizing outputs and entering recovery synchronization.",
+        (
+            "Safe runtime reset preserves biological profile and chemistry while "
+            "de-energizing outputs and entering recovery synchronization."
+        ),
         "test_safe_runtime_reset_preserves_biology_and_chemistry_but_deenergizes_outputs",
     ),
     BiologyCase(
         "bio_09_profile_recalculation",
         GateStatus.PASS,
-        "Pond volume, biomass and feed revisions automatically recalculate concentration-based biological oxygen demand.",
+        (
+            "Pond volume, biomass and feed revisions automatically recalculate "
+            "concentration-based biological oxygen demand."
+        ),
         "test_volume_biomass_and_feed_revision_recalculates_oxygen_load",
     ),
 )
