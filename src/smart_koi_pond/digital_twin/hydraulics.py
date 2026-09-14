@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from enum import StrEnum
@@ -14,7 +16,7 @@ class EngineeringProvenance(StrEnum):
     UNAVAILABLE = "UNAVAILABLE"
 
     @classmethod
-    def normalize(cls, value: str | "EngineeringProvenance") -> "EngineeringProvenance":
+    def normalize(cls, value: str | EngineeringProvenance) -> EngineeringProvenance:
         if isinstance(value, cls):
             return value
         text = str(value)
@@ -53,7 +55,7 @@ class HydraulicRouteSpec:
             raise ValueError("base_throughput_factor must be between 0.0 and 1.0")
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "HydraulicRouteSpec":
+    def from_dict(cls, data: Mapping[str, Any]) -> HydraulicRouteSpec:
         return cls(
             route_id=str(data["route_id"]),
             asset_id=str(data["asset_id"]),
@@ -105,7 +107,7 @@ class PondDesignProfile:
                 raise ValueError(f"{field_name} must be non-negative when provided")
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "PondDesignProfile":
+    def from_dict(cls, data: Mapping[str, Any]) -> PondDesignProfile:
         return cls(
             profile_id=str(data["profile_id"]),
             revision=str(data["revision"]),
@@ -313,7 +315,7 @@ class HydraulicNetworkModel:
     def from_checkpoint(
         cls,
         data: Mapping[str, Any],
-    ) -> "HydraulicNetworkModel":
+    ) -> HydraulicNetworkModel:
         network = cls(PondDesignProfile.from_dict(data["profile"]))
         for route_id, factor in data.get("route_restrictions", {}).items():
             if route_id in network._route_restrictions:
