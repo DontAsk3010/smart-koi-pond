@@ -4,7 +4,7 @@ ANIMATED_POND_STYLE = r"""
 <style id="animated-pond-style">
 .pond-stage{position:relative;min-height:430px;margin:12px 0 18px;border:1px solid #28506d;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#071829 0%,#0a2030 52%,#08131f 100%)}
 .pond-stage .stage-title{position:absolute;left:14px;top:12px;z-index:5;font-weight:800;letter-spacing:.04em}.pond-stage .stage-meta{position:absolute;right:14px;top:12px;z-index:5;text-align:right;color:#9db5c7;font-size:12px}.pond-vessel{position:absolute;left:18%;right:18%;bottom:38px;height:235px;border:2px solid #3e7fa6;border-radius:22px 22px 38px 38px;overflow:hidden;background:#081a27;box-shadow:inset 0 0 35px rgba(65,163,210,.12)}
-.pond-water{position:absolute;left:0;right:0;bottom:0;height:85%;min-height:2px;background:linear-gradient(180deg,rgba(44,155,206,.68),rgba(15,82,126,.83));transition:height .8s ease}.pond-water:before{content:"";position:absolute;left:-20%;top:-7px;width:140%;height:14px;background:radial-gradient(ellipse at center,rgba(140,224,255,.6) 0 32%,transparent 34%) 0 0/34px 12px;animation:waterRipple 2.4s linear infinite;opacity:.55}
+.pond-water{position:absolute;left:0;right:0;bottom:0;height:85%;min-height:2px;background:linear-gradient(180deg,rgba(44,155,206,.68),rgba(15,82,126,.83));transition:height .8s ease}.pond-water:before{content:"";position:absolute;left:-20%;top:-7px;width:140%;height:14px;background:radial-gradient(ellipse at center,rgba(140,224,255,.6) 0 32%,transparent 34%) 0 0/34px 12px;animation:waterRipple 2.4s linear infinite;opacity:.55}.pond-vessel.data-unavailable .pond-water{display:none}.pond-vessel.data-unavailable:before{content:"WATER LEVEL UNAVAILABLE";position:absolute;inset:0;display:grid;place-items:center;z-index:2;color:#c7d5df;font-size:12px;font-weight:800;letter-spacing:.08em;background:repeating-linear-gradient(135deg,rgba(100,132,153,.07) 0 10px,rgba(100,132,153,.14) 10px 20px)}
 @keyframes waterRipple{to{transform:translateX(34px)}}
 .pond-level-label{position:absolute;right:10px;bottom:10px;z-index:3;padding:4px 7px;background:rgba(3,15,24,.72);border:1px solid #2e617e;border-radius:6px;font-size:12px}.pond-do-label{position:absolute;left:10px;bottom:10px;z-index:3;padding:4px 7px;background:rgba(3,15,24,.72);border:1px solid #2e617e;border-radius:6px;font-size:12px}
 .process-svg{position:absolute;inset:45px 20px 20px;width:calc(100% - 40px);height:calc(100% - 65px);pointer-events:none}.pipe{fill:none;stroke:#38536a;stroke-width:8;stroke-linecap:round;stroke-linejoin:round}.pipe.route-active{stroke:#55c7ff;stroke-dasharray:13 13;animation:pipeFlow 1s linear infinite}.pipe.route-backup.route-active{stroke:#83d8ff}.pipe.inlet-active{stroke:#65dbbb;stroke-dasharray:11 12;animation:pipeFlow .8s linear infinite}.pipe.discharge-active{stroke:#d5a460;stroke-dasharray:11 12;animation:pipeFlow .75s linear infinite}.pipe.backwash-active{stroke:#c78bff;stroke-dasharray:9 11;animation:pipeFlow .7s linear infinite}@keyframes pipeFlow{to{stroke-dashoffset:-26}}
@@ -17,11 +17,12 @@ ANIMATED_POND_STYLE = r"""
 
 ANIMATED_POND_SCRIPT = r"""
 (function(){
-  function clamp(v,lo,hi){v=Number(v);return Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):lo}
+  function finite(v){if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null}
+  function bounded(v,lo,hi=null){const n=finite(v);if(n===null)return null;return Math.max(lo,hi===null?n:Math.min(hi,n))}
   function esc(v){return String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-  function num(v,d=2){const n=Number(v);return Number.isFinite(n)?n.toFixed(d):'UNAVAILABLE'}
+  function num(v,d=2){const n=finite(v);return n===null?'UNAVAILABLE':n.toFixed(d)}
   function statusClass(path){if(!path)return'';if(path.availability==='FAILED'||path.verification_status==='FAILED_RESPONSE')return' failed';return path.motion_active?' active':''}
-  function pathLabel(path){if(!path)return'UNAVAILABLE';const pct=Math.round(clamp(path.effectiveness,0,1)*100);return `${path.feedback_on?'ON':'OFF'} · ${esc(path.availability)} · effect ${pct}%${path.verification_status?` · ${esc(path.verification_status)}`:''}`}
+  function pathLabel(path){if(!path)return'UNAVAILABLE';const effect=bounded(path.effectiveness,0,1),effectLabel=effect===null?'UNAVAILABLE':`${Math.round(effect*100)}%`;return `${path.feedback_on?'ON':'OFF'} · ${esc(path.availability||'UNKNOWN')} · effect ${effectLabel}${path.verification_status?` · ${esc(path.verification_status)}`:''}`}
   function installStage(){
     const grid=document.getElementById('processGrid');if(!grid||document.getElementById('animatedPondStage'))return;
     const stage=document.createElement('div');stage.id='animatedPondStage';stage.className='pond-stage';stage.innerHTML=`
@@ -33,7 +34,7 @@ ANIMATED_POND_SCRIPT = r"""
         <path id="drainPath" class="pipe" d="M500 285 L500 365"/>
         <path id="backwashPath" class="pipe" d="M300 120 L215 70 L120 70"/>
       </svg>
-      <div class="pond-vessel"><div id="pondWater" class="pond-water"></div><div id="pondLevelLabel" class="pond-level-label">Level —</div><div id="pondDoLabel" class="pond-do-label">DO —</div></div>
+      <div id="pondVessel" class="pond-vessel"><div id="pondWater" class="pond-water"></div><div id="pondLevelLabel" class="pond-level-label">Level —</div><div id="pondDoLabel" class="pond-do-label">DO —</div></div>
       <div id="pondBubbles" class="bubbles"><i class="bubble"></i><i class="bubble"></i><i class="bubble"></i><i class="bubble"></i><i class="bubble"></i></div>
       <div id="chipMain" class="device-chip chip-main"><b>Main circulation</b><small>—</small></div><div id="chipBackup" class="device-chip chip-backup"><b>Backup circulation</b><small>—</small></div><div id="chipAeration" class="device-chip chip-aeration"><b>Aeration</b><small>—</small></div><div id="chipWater" class="device-chip chip-water"><b>Water management</b><small>—</small></div>
       <div class="process-legend">Motion = canonical runtime/process evidence, never decorative success.</div><div id="pondVisualWarning" class="process-warning">Waste/sludge quantity: NOT MODELED</div>`;
@@ -54,15 +55,20 @@ ANIMATED_POND_SCRIPT = r"""
     installStage();const stage=document.getElementById('animatedPondStage');if(!stage||!pv)return;
     stage.classList.toggle('motion-paused',!!pv.simulation_paused);
     const wm=pv.water_management||{},circ=pv.circulation||{},aer=pv.aeration||{},mf=pv.mechanical_filtration||{};
-    const level=clamp(wm.water_level_pct,0,100),flow=Math.max(0,Number(circ.measured_total_flow_l_min)||0),dox=Math.max(0,Number(pv.dissolved_oxygen_mg_l)||0);
-    document.getElementById('pondWater').style.height=`${level}%`;document.getElementById('pondLevelLabel').textContent=`Level ${level.toFixed(1)}%`;document.getElementById('pondDoLabel').textContent=`DO ${dox.toFixed(2)} mg/L`;
+    const level=bounded(wm.water_level_pct,0,100),flow=bounded(circ.measured_total_flow_l_min,0),dox=bounded(pv.dissolved_oxygen_mg_l,0);
+    const vessel=document.getElementById('pondVessel'),waterEl=document.getElementById('pondWater');
+    vessel.classList.toggle('data-unavailable',level===null);
+    if(level!==null)waterEl.style.height=`${level}%`;else waterEl.style.removeProperty('height');
+    document.getElementById('pondLevelLabel').textContent=level===null?'Level UNAVAILABLE':`Level ${level.toFixed(1)}%`;
+    document.getElementById('pondDoLabel').textContent=dox===null?'DO UNAVAILABLE':`DO ${dox.toFixed(2)} mg/L`;
     const primary=circ.primary||{},backup=circ.backup||{},ap=aer.primary||{},ab=aer.backup||{},top=wm.top_up||{},drain=wm.drain||{},bw=wm.backwash||{};
-    document.getElementById('mainFlowPath').classList.toggle('route-active',!!primary.motion_active&&!!circ.flow_motion_active);document.getElementById('backupFlowPath').classList.toggle('route-active',!!backup.motion_active&&!!circ.flow_motion_active);
+    document.getElementById('mainFlowPath').classList.toggle('route-active',flow!==null&&!!primary.motion_active&&!!circ.flow_motion_active);document.getElementById('backupFlowPath').classList.toggle('route-active',flow!==null&&!!backup.motion_active&&!!circ.flow_motion_active);
     document.getElementById('topUpPath').classList.toggle('inlet-active',!!top.motion_active);document.getElementById('drainPath').classList.toggle('discharge-active',!!drain.motion_active);document.getElementById('backwashPath').classList.toggle('backwash-active',!!bw.motion_active);
-    const bubbleStrength=Math.max(clamp(ap.effectiveness,0,1)*(ap.motion_active?1:0),clamp(ab.effectiveness,0,1)*(ab.motion_active?1:0));const bubbles=document.getElementById('pondBubbles');bubbles.classList.toggle('active',bubbleStrength>0);bubbles.style.opacity=bubbleStrength>0?String(.35+.65*bubbleStrength):'0';
+    const apEffect=bounded(ap.effectiveness,0,1),abEffect=bounded(ab.effectiveness,0,1);const bubbleStrength=Math.max(apEffect===null?0:apEffect*(ap.motion_active?1:0),abEffect===null?0:abEffect*(ab.motion_active?1:0));const bubbles=document.getElementById('pondBubbles');bubbles.classList.toggle('active',bubbleStrength>0);bubbles.style.opacity=bubbleStrength>0?String(.35+.65*bubbleStrength):'0';
     const main=document.getElementById('chipMain'),back=document.getElementById('chipBackup'),air=document.getElementById('chipAeration'),water=document.getElementById('chipWater');main.className=`device-chip chip-main${statusClass(primary)}`;back.className=`device-chip chip-backup${statusClass(backup)}`;air.className=`device-chip chip-aeration${statusClass(ap)||statusClass(ab)}`;water.className=`device-chip chip-water${(top.motion_active||drain.motion_active||bw.motion_active)?' active':''}`;
     main.querySelector('small').innerHTML=pathLabel(primary);back.querySelector('small').innerHTML=pathLabel(backup);air.querySelector('small').innerHTML=`Primary ${pathLabel(ap)}<br>Backup ${pathLabel(ab)}`;water.querySelector('small').innerHTML=`Top-up ${pathLabel(top)}<br>Drain ${pathLabel(drain)}<br>Backwash ${pathLabel(bw)}`;
-    document.getElementById('pondStageMeta').innerHTML=`${esc(pv.classification)} · ${esc(pv.operating_mode)} / ${esc(pv.operating_phase)}<br>${flow.toFixed(2)} L/min · ${pv.simulation_paused?'PAUSED':'RUNNING'} · ${Number(pv.simulation_acceleration||1).toFixed(1)}×`;
+    const flowLabel=flow===null?'Flow UNAVAILABLE':`${flow.toFixed(2)} L/min`;
+    document.getElementById('pondStageMeta').innerHTML=`${esc(pv.classification)} · ${esc(pv.operating_mode)} / ${esc(pv.operating_phase)}<br>${flowLabel} · ${pv.simulation_paused?'PAUSED':'RUNNING'} · ${Number(pv.simulation_acceleration||1).toFixed(1)}×`;
     const rate=wm.quantitative_discharge_rate_l_min==null?'UNAVAILABLE':`${num(wm.quantitative_discharge_rate_l_min,2)} L/min`;
     document.getElementById('pondVisualWarning').textContent=`Discharge ${esc(wm.discharge_kind||'NONE')} · rate ${rate} · ${filterEvidence(mf)}`;
   }
