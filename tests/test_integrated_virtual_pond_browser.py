@@ -3,6 +3,7 @@ import pytest
 from smart_koi_pond.dashboard.app import build_integrated_virtual_runtime
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.webapp import COMPOSED_INDEX_HTML
+from smart_koi_pond.domain.enums import OperatingMode
 
 
 def pond_profile() -> dict:
@@ -268,6 +269,22 @@ def test_historian_playback_preserves_integrated_process_state() -> None:
     assert playback["snapshot"]["process_visual"] == frame["snapshot"]["process_visual"]
 
 
+def test_governed_backwash_uses_backwash_valve_without_fake_filter_asset() -> None:
+    app = service()
+    configure_stack(app)
+
+    snapshot = app.command(
+        "start_filter_clean",
+        {"service_scope": [], "reason": "TEST_BROWSER_BACKWASH"},
+        role="engineering",
+    )
+
+    assert "mechanical_filter" not in app.runtime.actuators.assets
+    assert snapshot.operating_mode == OperatingMode.FILTER_CLEAN
+    assert snapshot.assets["backwash_valve"].feedback_on is True
+    assert snapshot.assets["backwash_valve"].owner.value == "WORKFLOW"
+
+
 def test_browser_surface_exposes_integrated_setup_without_hidden_process_values() -> None:
     assert "Integrated Pond" in COMPOSED_INDEX_HTML
     assert "No hidden engineering defaults" in COMPOSED_INDEX_HTML
@@ -279,4 +296,6 @@ def test_browser_surface_exposes_integrated_setup_without_hidden_process_values(
     assert "Enter Manual Equipment Control" in COMPOSED_INDEX_HTML
     assert "AUTO ownership cannot be bypassed" in COMPOSED_INDEX_HTML
     assert "backup circulation remains DISABLED BY CONFIGURATION" in COMPOSED_INDEX_HTML
+    assert "service_scope:[]" in COMPOSED_INDEX_HTML
+    assert "enabled:backup!==null" in COMPOSED_INDEX_HTML
     assert "/api/command" in COMPOSED_INDEX_HTML
