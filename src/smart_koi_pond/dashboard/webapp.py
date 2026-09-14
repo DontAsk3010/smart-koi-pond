@@ -15,6 +15,7 @@ from smart_koi_pond.dashboard.integrated_virtual_pond_ui import (
 )
 from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
+from smart_koi_pond.dashboard.source_water_ui import SOURCE_WATER_UI_SCRIPT
 from smart_koi_pond.dashboard.web_ui import INDEX_HTML
 
 COMPOSED_INDEX_HTML = INDEX_HTML.replace(
@@ -27,6 +28,7 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{ANIMATED_POND_SCRIPT}</script>"
         f"<script>{FAULT_CONTROLS_UI_SCRIPT}</script>"
         f"<script>{INTEGRATED_VIRTUAL_POND_SCRIPT}</script>"
+        f"<script>{SOURCE_WATER_UI_SCRIPT}</script>"
         f"<script>{INTEGRATED_CONTROL_UI_SCRIPT}</script></body>"
     ),
 )

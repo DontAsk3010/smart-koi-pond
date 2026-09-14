@@ -87,6 +87,11 @@ jobs:
           python -m smart_koi_pond.scenarios.integrated_virtual_pond_matrix
           --output artifacts/integrated-virtual-pond-browser-${{ matrix.python-version }}.json
 
+      - name: Build source-water exchange fidelity evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.source_water_exchange_matrix
+          --output artifacts/source-water-exchange-fidelity-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -146,3 +151,9 @@ jobs:
         with:
           name: integrated-virtual-pond-browser-python-${{ matrix.python-version }}
           path: artifacts/integrated-virtual-pond-browser-${{ matrix.python-version }}.json
+
+      - name: Upload source-water exchange fidelity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-water-exchange-fidelity-python-${{ matrix.python-version }}
+          path: artifacts/source-water-exchange-fidelity-${{ matrix.python-version }}.json

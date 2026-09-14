@@ -11,6 +11,7 @@ from smart_koi_pond.digital_twin.filtration import MechanicalFiltrationProfile
 from smart_koi_pond.digital_twin.hydraulics import PondDesignProfile
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
+from smart_koi_pond.digital_twin.water_exchange import SourceWaterProfile
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import RuntimeSnapshot
 from smart_koi_pond.domain.process_visual import project_process_visual
@@ -43,6 +44,7 @@ _ACTION_LEVEL = {
     "configure_design_profile": 2,
     "configure_biological_profile": 2,
     "configure_mechanical_filtration_profile": 2,
+    "configure_source_water_profile": 2,
     "set_hydraulic_restriction": 2,
     "set_environment_state": 2,
 }
@@ -120,6 +122,7 @@ class RuntimeApplicationService:
             publication["process_visual_schema_version"] = 2
             publication["biology_schema_version"] = 1
             publication["mechanical_filtration_schema_version"] = 1
+            publication["source_water_exchange_schema_version"] = 1
             publication["scenario_triggers"] = _wire(self.scenarios.triggers)
             return publication
 
@@ -337,6 +340,47 @@ class RuntimeApplicationService:
                         "source_reference": profile.source_reference,
                         "filtered_route_id": profile.filtered_route_id,
                         "provenance": profile.provenance,
+                        "hidden_default_values": False,
+                    },
+                )
+            elif action == "configure_source_water_profile":
+                configure = getattr(
+                    self.runtime.model,
+                    "configure_source_water_profile",
+                    None,
+                )
+                if configure is None:
+                    raise RuntimeError(
+                        "runtime model does not support source-water mixing"
+                    )
+                profile = SourceWaterProfile.from_dict(data["profile"])
+                configure(profile)
+                known_parameters = [
+                    name
+                    for name in (
+                        "temperature_c",
+                        "dissolved_oxygen_mg_l",
+                        "ph",
+                        "total_ammonia_nitrogen_mg_l",
+                        "nitrite_mg_l",
+                        "nitrate_mg_l",
+                        "alkalinity_mg_l_as_caco3",
+                    )
+                    if getattr(profile, name) is not None
+                ]
+                self.runtime.events.append(
+                    self.runtime.clock.current,
+                    EventType.CONFIGURATION,
+                    "SOURCE_WATER_PROFILE_CONFIGURED",
+                    {
+                        "actor": str(data.get("actor", role)),
+                        "profile_id": profile.profile_id,
+                        "revision": profile.revision,
+                        "source_reference": profile.source_reference,
+                        "source_type": profile.source_type,
+                        "provenance": profile.provenance,
+                        "known_parameters": known_parameters,
+                        "source_type_implies_chemistry": False,
                         "hidden_default_values": False,
                     },
                 )
