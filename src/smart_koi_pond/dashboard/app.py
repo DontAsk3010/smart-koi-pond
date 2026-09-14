@@ -5,6 +5,7 @@ from smart_koi_pond.control.engine import SimulationControlPolicy
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
+from smart_koi_pond.digital_twin.governed_runtime import ProductionDigitalTwinRuntime
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.water_exchange import WaterExchangePondModel
@@ -44,7 +45,7 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    runtime = DigitalTwinRuntime(
+    runtime = ProductionDigitalTwinRuntime(
         WaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
@@ -81,6 +82,8 @@ def build_integrated_virtual_runtime(
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
             "simulation_initial_state_is_physical_measurement": False,
             "hidden_engineering_defaults": False,
+            "governed_reconfiguration": True,
+            "bounded_self_recovery": True,
         },
     )
     return runtime
@@ -146,6 +149,7 @@ def main() -> None:
         "Pond/hydraulic, biology, filter and source-water facts: "
         "INPUT REQUIRED until configured"
     )
+    print("Governed reconfiguration / rollback / bounded self-recovery: ENABLED")
     print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)
 
