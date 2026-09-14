@@ -49,6 +49,20 @@ class WaterManagementVisualState:
 
 
 @dataclass(slots=True, frozen=True)
+class MechanicalFiltrationVisualState:
+    configured: bool
+    provenance: str
+    filtered_route_id: str | None
+    captured_solids_g: float | None
+    suspended_solids_g: float | None
+    loading_fraction: float | None
+    process_throughput_factor: float | None
+    tss_mg_l: float | None
+    turbidity_ntu: float | None
+    water_clarity_conclusion: str
+
+
+@dataclass(slots=True, frozen=True)
 class ProcessVisualState:
     schema_version: int
     source: str
@@ -63,6 +77,7 @@ class ProcessVisualState:
     circulation: CirculationVisualState
     aeration: AerationVisualState
     water_management: WaterManagementVisualState
+    mechanical_filtration: MechanicalFiltrationVisualState
     active_alarm_codes: tuple[str, ...]
     limitations: tuple[str, ...]
 
@@ -86,6 +101,12 @@ def _text(value: Any, default: str = "UNKNOWN") -> str:
 def _number(value: Any, default: float = 0.0) -> float:
     if value is None:
         return default
+    return float(value)
+
+
+def _optional_number(value: Any) -> float | None:
+    if value is None:
+        return None
     return float(value)
 
 
@@ -189,15 +210,72 @@ def _hydraulic_projection(
     )
 
 
+def _filtration_projection(
+    snapshot: RuntimeSnapshot | Mapping[str, Any],
+) -> tuple[MechanicalFiltrationVisualState, tuple[str, ...], float | None]:
+    hydraulics = _get(snapshot, "hydraulics", {}) or {}
+    filtration = _get(hydraulics, "mechanical_filtration", {}) or {}
+    configured = bool(_get(filtration, "configured", False))
+    if not configured:
+        return (
+            MechanicalFiltrationVisualState(
+                configured=False,
+                provenance="UNAVAILABLE",
+                filtered_route_id=None,
+                captured_solids_g=None,
+                suspended_solids_g=None,
+                loading_fraction=None,
+                process_throughput_factor=None,
+                tss_mg_l=None,
+                turbidity_ntu=None,
+                water_clarity_conclusion="NOT_ESTABLISHED",
+            ),
+            ("NO_QUANTITATIVE_WASTE_OR_SLUDGE_MODEL",),
+            None,
+        )
+
+    limitations: list[str] = []
+    if _get(filtration, "tss_mg_l") is None:
+        limitations.append("TSS_UNAVAILABLE")
+    if _get(filtration, "turbidity_ntu") is None:
+        limitations.append("TURBIDITY_UNAVAILABLE_NO_GOVERNED_BASIS")
+    discharge_rate = _optional_number(
+        _get(filtration, "backwash_discharge_flow_l_min")
+    )
+    if discharge_rate is None:
+        limitations.append("BACKWASH_DISCHARGE_RATE_UNAVAILABLE")
+
+    return (
+        MechanicalFiltrationVisualState(
+            configured=True,
+            provenance=_text(_get(filtration, "provenance"), "UNAVAILABLE"),
+            filtered_route_id=_get(filtration, "filtered_route_id"),
+            captured_solids_g=_optional_number(
+                _get(filtration, "captured_solids_g")
+            ),
+            suspended_solids_g=_optional_number(
+                _get(filtration, "suspended_solids_g")
+            ),
+            loading_fraction=_optional_number(_get(filtration, "loading_fraction")),
+            process_throughput_factor=_optional_number(
+                _get(filtration, "process_throughput_factor")
+            ),
+            tss_mg_l=_optional_number(_get(filtration, "tss_mg_l")),
+            turbidity_ntu=_optional_number(_get(filtration, "turbidity_ntu")),
+            water_clarity_conclusion=_text(
+                _get(filtration, "water_clarity_conclusion"),
+                "NOT_ESTABLISHED",
+            ),
+        ),
+        tuple(limitations),
+        discharge_rate,
+    )
+
+
 def project_process_visual(
     snapshot: RuntimeSnapshot | Mapping[str, Any],
 ) -> ProcessVisualState:
-    """Project canonical runtime truth into renderer-ready process state.
-
-    This projection never creates control decisions. It exposes only process motion that can
-    be supported by the current runtime snapshot. Where the model does not provide a
-    quantitative state, the projection keeps that value unavailable rather than inventing it.
-    """
+    """Project canonical runtime truth into renderer-ready process state."""
 
     pond = _get(snapshot, "pond_truth", {}) or {}
     operating = _get(snapshot, "operating_status", {}) or {}
@@ -219,9 +297,7 @@ def project_process_visual(
         for path in (primary_pump, backup_pump)
         if path.motion_active
     )
-    route_flows, route_provenance, route_limitations = _hydraulic_projection(
-        snapshot
-    )
+    route_flows, route_provenance, route_limitations = _hydraulic_projection(snapshot)
 
     primary_aerator = _asset_path(
         snapshot,
@@ -249,6 +325,8 @@ def project_process_visual(
         expected_direction = "RISING_EXPECTED"
     elif drain.motion_active:
         expected_direction = "FALLING_EXPECTED"
+    elif backwash.motion_active:
+        expected_direction = "FALLING_IF_BACKWASH_DISCHARGE_QUANTIFIED"
     else:
         expected_direction = "NO_ACTIVE_FILL_DRAIN_COMMAND"
 
@@ -261,6 +339,15 @@ def project_process_visual(
     else:
         discharge_kind = "NONE"
 
+    filtration, filtration_limitations, configured_backwash_rate = (
+        _filtration_projection(snapshot)
+    )
+    quantitative_backwash_rate = (
+        configured_backwash_rate * backwash.effectiveness
+        if backwash.motion_active and configured_backwash_rate is not None
+        else None
+    )
+
     alarms = _get(snapshot, "alarms", ()) or ()
     active_alarm_codes = tuple(
         _text(_get(alarm, "code"), "")
@@ -269,7 +356,7 @@ def project_process_visual(
     )
 
     return ProcessVisualState(
-        schema_version=1,
+        schema_version=2,
         source="CANONICAL_RUNTIME_SNAPSHOT",
         run_id=_text(_get(snapshot, "run_id"), ""),
         timestamp=_text(_get(snapshot, "timestamp"), ""),
@@ -309,12 +396,9 @@ def project_process_visual(
             backwash=backwash,
             expected_level_direction=expected_direction,
             discharge_kind=discharge_kind,
-            quantitative_discharge_rate_l_min=None,
+            quantitative_discharge_rate_l_min=quantitative_backwash_rate,
         ),
+        mechanical_filtration=filtration,
         active_alarm_codes=active_alarm_codes,
-        limitations=(
-            "NO_QUANTITATIVE_WASTE_OR_SLUDGE_MODEL",
-            *route_limitations,
-            "BACKWASH_DISCHARGE_RATE_NOT_MODELED",
-        ),
+        limitations=(*route_limitations, *filtration_limitations),
     )

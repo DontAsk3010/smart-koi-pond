@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from smart_koi_pond.digital_twin.biology import BiologicalProcessProfile
+from smart_koi_pond.digital_twin.filtration import MechanicalFiltrationProfile
 from smart_koi_pond.digital_twin.hydraulics import PondDesignProfile
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.digital_twin.scenario_control import ScenarioTrigger, VirtualScenarioController
@@ -41,6 +42,7 @@ _ACTION_LEVEL = {
     "configure_module": 2,
     "configure_design_profile": 2,
     "configure_biological_profile": 2,
+    "configure_mechanical_filtration_profile": 2,
     "set_hydraulic_restriction": 2,
     "set_environment_state": 2,
 }
@@ -115,8 +117,9 @@ class RuntimeApplicationService:
             publication["snapshot"]["biology"] = _wire(
                 self.runtime.model.biological_snapshot()
             )
-            publication["process_visual_schema_version"] = 1
+            publication["process_visual_schema_version"] = 2
             publication["biology_schema_version"] = 1
+            publication["mechanical_filtration_schema_version"] = 1
             publication["scenario_triggers"] = _wire(self.scenarios.triggers)
             return publication
 
@@ -316,6 +319,23 @@ class RuntimeApplicationService:
                         "profile_id": profile.profile_id,
                         "revision": profile.revision,
                         "source_reference": profile.source_reference,
+                        "provenance": profile.provenance,
+                        "hidden_default_values": False,
+                    },
+                )
+            elif action == "configure_mechanical_filtration_profile":
+                profile = MechanicalFiltrationProfile.from_dict(data["profile"])
+                self.runtime.model.configure_mechanical_filtration_profile(profile)
+                self.runtime.events.append(
+                    self.runtime.clock.current,
+                    EventType.CONFIGURATION,
+                    "MECHANICAL_FILTRATION_PROFILE_CONFIGURED",
+                    {
+                        "actor": str(data.get("actor", role)),
+                        "profile_id": profile.profile_id,
+                        "revision": profile.revision,
+                        "source_reference": profile.source_reference,
+                        "filtered_route_id": profile.filtered_route_id,
                         "provenance": profile.provenance,
                         "hidden_default_values": False,
                     },
