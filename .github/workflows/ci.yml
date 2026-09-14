@@ -72,6 +72,11 @@ jobs:
           python -m smart_koi_pond.scenarios.hydraulic_profile_matrix
           --output artifacts/hydraulic-profile-fidelity-${{ matrix.python-version }}.json
 
+      - name: Build integrated biology/environment evidence
+        run: >-
+          python -m smart_koi_pond.scenarios.integrated_biology_matrix
+          --output artifacts/integrated-biology-environment-${{ matrix.python-version }}.json
+
       - name: Upload V1 regression evidence
         uses: actions/upload-artifact@v4
         with:
@@ -113,3 +118,9 @@ jobs:
         with:
           name: hydraulic-profile-fidelity-python-${{ matrix.python-version }}
           path: artifacts/hydraulic-profile-fidelity-${{ matrix.python-version }}.json
+
+      - name: Upload integrated biology/environment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: integrated-biology-environment-python-${{ matrix.python-version }}
+          path: artifacts/integrated-biology-environment-${{ matrix.python-version }}.json
