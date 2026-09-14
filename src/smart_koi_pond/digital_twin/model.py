@@ -6,6 +6,10 @@ from smart_koi_pond.digital_twin.biology import (
     BiologicalProcessModel,
     BiologicalProcessProfile,
 )
+from smart_koi_pond.digital_twin.filtration import (
+    MechanicalFiltrationModel,
+    MechanicalFiltrationProfile,
+)
 from smart_koi_pond.digital_twin.hydraulics import HydraulicNetworkModel, PondDesignProfile
 from smart_koi_pond.domain.models import PondState
 
@@ -29,12 +33,7 @@ class ActuatorEffects:
 
 
 class PondModel:
-    """Deterministic production-lineage pond model.
-
-    Without configured hydraulic/biological profiles the model preserves the accepted
-    V1 control-test behavior. Configured profiles add route-aware hydraulics and
-    explicit-input biological chemistry without fabricating missing engineering values.
-    """
+    """Deterministic production-lineage pond model."""
 
     def __init__(
         self,
@@ -44,12 +43,16 @@ class PondModel:
         *,
         hydraulics: HydraulicNetworkModel | None = None,
         biology: BiologicalProcessModel | None = None,
+        filtration: MechanicalFiltrationModel | None = None,
     ) -> None:
         self.state = state
         self.environment = environment
         self.effects = effects or ActuatorEffects()
         self.hydraulics = hydraulics
         self.biology = biology
+        self.filtration = filtration
+        self._validate_filtration_route()
+        self._sync_filtration_process_factor()
 
     def set_truth(self, parameter: str, value: float) -> None:
         attributes = {
@@ -68,11 +71,37 @@ class PondModel:
             raise KeyError(parameter)
         setattr(self.state, attribute, float(value))
 
+    def _validate_filtration_route(self) -> None:
+        if self.filtration is None:
+            return
+        if self.hydraulics is None:
+            raise RuntimeError(
+                "hydraulic Pond Profile must be configured before mechanical filtration"
+            )
+        route_id = self.filtration.profile.filtered_route_id
+        if not self.hydraulics.has_route(route_id):
+            raise ValueError(f"mechanical filtration route is not configured: {route_id}")
+
+    def _sync_filtration_process_factor(self) -> None:
+        if self.filtration is None or self.hydraulics is None:
+            return
+        self.hydraulics.set_route_process_factor(
+            self.filtration.profile.filtered_route_id,
+            self.filtration.process_throughput_factor,
+        )
+
     def configure_design_profile(self, profile: PondDesignProfile) -> None:
+        if self.filtration is not None:
+            route_ids = {route.route_id for route in profile.routes}
+            if self.filtration.profile.filtered_route_id not in route_ids:
+                raise ValueError(
+                    "updated Pond Profile removes the route bound to mechanical filtration"
+                )
         if self.hydraulics is None:
             self.hydraulics = HydraulicNetworkModel(profile)
         else:
             self.hydraulics.configure_profile(profile)
+        self._sync_filtration_process_factor()
 
     def configure_biological_profile(self, profile: BiologicalProcessProfile) -> None:
         if self.hydraulics is None:
@@ -83,6 +112,29 @@ class PondModel:
             self.biology = BiologicalProcessModel(profile)
         else:
             self.biology.configure_profile(profile)
+
+    def configure_mechanical_filtration_profile(
+        self,
+        profile: MechanicalFiltrationProfile,
+    ) -> None:
+        if self.hydraulics is None:
+            raise RuntimeError(
+                "hydraulic Pond Profile must be configured before mechanical filtration"
+            )
+        if not self.hydraulics.has_route(profile.filtered_route_id):
+            raise ValueError(
+                f"mechanical filtration route is not configured: {profile.filtered_route_id}"
+            )
+        if self.filtration is None:
+            self.filtration = MechanicalFiltrationModel(profile)
+        else:
+            previous_route = self.filtration.profile.filtered_route_id
+            self.filtration.configure_profile(profile)
+            if previous_route != profile.filtered_route_id and self.hydraulics.has_route(
+                previous_route
+            ):
+                self.hydraulics.set_route_process_factor(previous_route, 1.0)
+        self._sync_filtration_process_factor()
 
     def set_hydraulic_restriction(self, route_id: str, throughput_factor: float) -> None:
         if self.hydraulics is None:
@@ -122,6 +174,27 @@ class PondModel:
             }
         return self.biology.snapshot()
 
+    def mechanical_filtration_snapshot(self) -> dict[str, Any]:
+        if self.filtration is None:
+            return {
+                "configured": False,
+                "status": "NOT_CONFIGURED",
+                "provenance": "UNAVAILABLE",
+                "captured_solids_g": None,
+                "tss_mg_l": None,
+                "turbidity_ntu": None,
+                "water_clarity_conclusion": "NOT_ESTABLISHED",
+            }
+        volume_l = (
+            self.hydraulics.profile.effective_volume_l
+            if self.hydraulics is not None
+            else None
+        )
+        return self.filtration.snapshot(
+            suspended_solids_g=self.state.waste_solids_g,
+            volume_l=volume_l,
+        )
+
     def _biological_truth_snapshot(self) -> dict[str, float | None]:
         return {
             "total_ammonia_nitrogen_mg_l": self.state.total_ammonia_nitrogen_mg_l,
@@ -137,6 +210,9 @@ class PondModel:
                 self.hydraulics.checkpoint_state() if self.hydraulics is not None else None
             ),
             "biology": self.biology.checkpoint_state() if self.biology is not None else None,
+            "filtration": (
+                self.filtration.checkpoint_state() if self.filtration is not None else None
+            ),
             "biological_truth": self._biological_truth_snapshot(),
         }
 
@@ -144,9 +220,11 @@ class PondModel:
         if not state:
             self.hydraulics = None
             self.biology = None
+            self.filtration = None
             return
         hydraulic_state = state.get("hydraulics")
         biology_state = state.get("biology")
+        filtration_state = state.get("filtration")
         self.hydraulics = (
             HydraulicNetworkModel.from_checkpoint(hydraulic_state)
             if hydraulic_state is not None
@@ -157,6 +235,13 @@ class PondModel:
             if biology_state is not None
             else None
         )
+        self.filtration = (
+            MechanicalFiltrationModel.from_checkpoint(filtration_state)
+            if filtration_state is not None
+            else None
+        )
+        self._validate_filtration_route()
+        self._sync_filtration_process_factor()
         for parameter, value in state.get("biological_truth", {}).items():
             if value is not None:
                 self.set_truth(parameter, float(value))
@@ -186,6 +271,30 @@ class PondModel:
             ),
         )
 
+    def _mechanical_filtration_step(
+        self,
+        seconds: float,
+        actuator_effects: dict[str, float | bool],
+        hydraulic_state: dict[str, Any] | None,
+    ) -> float | None:
+        if self.filtration is None or self.hydraulics is None or hydraulic_state is None:
+            return None
+        route_id = self.filtration.profile.filtered_route_id
+        route_state = hydraulic_state["routes"][route_id]
+        result = self.filtration.step(
+            self.state,
+            seconds=seconds,
+            volume_l=self.hydraulics.profile.effective_volume_l,
+            route_flow_l_min=float(route_state["effective_flow_l_min"]),
+            backwash_effect=self._effect(actuator_effects, "backwash_valve"),
+        )
+        self._sync_filtration_process_factor()
+        refreshed = self.hydraulics.evaluate(actuator_effects)
+        self.state.circulation_flow_l_min = float(
+            refreshed["total_effective_flow_l_min"]
+        )
+        return result["backwash_discharge_l"]
+
     def step(
         self,
         seconds: float,
@@ -201,18 +310,24 @@ class PondModel:
         top_up_effect = self._effect(actuator_effects, "top_up_valve")
         drain_effect = self._effect(actuator_effects, "drain_valve")
 
+        hydraulic_state: dict[str, Any] | None = None
         if self.hydraulics is None:
             self.state.circulation_flow_l_min = (
                 e.main_pump_flow_l_min * main_pump_effect
                 + e.backup_pump_flow_l_min * backup_pump_effect
             )
         else:
+            self._sync_filtration_process_factor()
             hydraulic_state = self.hydraulics.evaluate(actuator_effects)
             self.state.circulation_flow_l_min = float(
                 hydraulic_state["total_effective_flow_l_min"]
             )
 
         biological_oxygen_demand = self._biological_oxygen_demand(seconds)
+        backwash_discharge_l = self._mechanical_filtration_step(
+            seconds, actuator_effects, hydraulic_state
+        )
+
         do_delta = -self.environment.oxygen_demand_mg_l_per_hour
         do_delta -= biological_oxygen_demand
         do_delta += e.primary_aerator_gain_mg_l_per_hour * primary_aerator_effect
@@ -241,5 +356,15 @@ class PondModel:
         else:
             level_delta += volume_aware_delta
         next_level = self.state.water_level_pct + level_delta * hours
+        if (
+            backwash_discharge_l is not None
+            and self.hydraulics is not None
+            and self.hydraulics.profile.effective_volume_l > 0
+        ):
+            next_level -= (
+                backwash_discharge_l
+                / self.hydraulics.profile.effective_volume_l
+                * 100.0
+            )
         self.state.water_level_pct = min(100.0, max(0.0, next_level))
         return self.state
