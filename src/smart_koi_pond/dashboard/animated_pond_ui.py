@@ -10,7 +10,7 @@ ANIMATED_POND_STYLE = r"""
 .process-svg{position:absolute;inset:45px 20px 20px;width:calc(100% - 40px);height:calc(100% - 65px);pointer-events:none}.pipe{fill:none;stroke:#38536a;stroke-width:8;stroke-linecap:round;stroke-linejoin:round}.pipe.route-active{stroke:#55c7ff;stroke-dasharray:13 13;animation:pipeFlow 1s linear infinite}.pipe.route-backup.route-active{stroke:#83d8ff}.pipe.inlet-active{stroke:#65dbbb;stroke-dasharray:11 12;animation:pipeFlow .8s linear infinite}.pipe.discharge-active{stroke:#d5a460;stroke-dasharray:11 12;animation:pipeFlow .75s linear infinite}.pipe.backwash-active{stroke:#c78bff;stroke-dasharray:9 11;animation:pipeFlow .7s linear infinite}@keyframes pipeFlow{to{stroke-dashoffset:-26}}
 .device-chip{position:absolute;z-index:4;min-width:118px;padding:7px 9px;border:1px solid #294760;background:rgba(7,21,34,.94);border-radius:8px;font-size:12px}.device-chip b{display:block;font-size:13px}.device-chip.active{border-color:#46b9e9;box-shadow:0 0 0 1px rgba(70,185,233,.22),0 0 16px rgba(70,185,233,.12)}.device-chip.failed{border-color:#ff5d68}.device-chip small{color:#8fa4b8}.chip-main{left:2%;top:88px}.chip-backup{left:2%;top:172px}.chip-aeration{right:2%;top:88px}.chip-water{right:2%;top:185px}
 .bubbles{position:absolute;left:42%;right:42%;bottom:56px;height:150px;z-index:2;opacity:0;transition:opacity .35s}.bubbles.active{opacity:1}.bubble{position:absolute;bottom:0;width:9px;height:9px;border:1px solid rgba(207,243,255,.9);border-radius:50%;background:rgba(183,235,255,.18);animation:bubbleRise 2.2s linear infinite}.bubble:nth-child(2){left:30%;animation-delay:.5s}.bubble:nth-child(3){left:65%;animation-delay:1.1s}.bubble:nth-child(4){left:80%;animation-delay:.2s;width:6px;height:6px}.bubble:nth-child(5){left:45%;animation-delay:1.5s;width:12px;height:12px}@keyframes bubbleRise{0%{transform:translateY(0) scale(.7);opacity:.15}30%{opacity:.9}100%{transform:translateY(-145px) scale(1.25);opacity:0}}
-.process-legend{position:absolute;left:14px;bottom:10px;z-index:5;font-size:11px;color:#8fa4b8}.process-warning{position:absolute;right:14px;bottom:10px;z-index:5;font-size:11px;color:#d7b86a;text-align:right}.motion-paused .pipe.route-active,.motion-paused .pipe.inlet-active,.motion-paused .pipe.discharge-active,.motion-paused .pipe.backwash-active,.motion-paused .pond-water:before,.motion-paused .bubble{animation-play-state:paused!important}
+.process-legend{position:absolute;left:14px;bottom:10px;z-index:5;font-size:11px;color:#8fa4b8}.process-warning{position:absolute;right:14px;bottom:10px;z-index:5;font-size:11px;color:#d7b86a;text-align:right;max-width:68%}.motion-paused .pipe.route-active,.motion-paused .pipe.inlet-active,.motion-paused .pipe.discharge-active,.motion-paused .pipe.backwash-active,.motion-paused .pond-water:before,.motion-paused .bubble{animation-play-state:paused!important}
 @media(max-width:900px){.pond-stage{min-height:500px}.pond-vessel{left:8%;right:8%;bottom:70px}.device-chip{min-width:105px}.chip-main{left:2%;top:58px}.chip-backup{left:2%;top:124px}.chip-aeration{right:2%;top:58px}.chip-water{right:2%;top:140px}.process-svg{inset:35px 8px 40px;width:calc(100% - 16px);height:calc(100% - 75px)}}
 </style>
 """
@@ -19,6 +19,7 @@ ANIMATED_POND_SCRIPT = r"""
 (function(){
   function clamp(v,lo,hi){v=Number(v);return Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):lo}
   function esc(v){return String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+  function num(v,d=2){const n=Number(v);return Number.isFinite(n)?n.toFixed(d):'UNAVAILABLE'}
   function statusClass(path){if(!path)return'';if(path.availability==='FAILED'||path.verification_status==='FAILED_RESPONSE')return' failed';return path.motion_active?' active':''}
   function pathLabel(path){if(!path)return'UNAVAILABLE';const pct=Math.round(clamp(path.effectiveness,0,1)*100);return `${path.feedback_on?'ON':'OFF'} · ${esc(path.availability)} · effect ${pct}%${path.verification_status?` · ${esc(path.verification_status)}`:''}`}
   function installStage(){
@@ -40,10 +41,19 @@ ANIMATED_POND_SCRIPT = r"""
     const simControls=document.querySelector('#simulator .controls');
     if(simControls&&!document.getElementById('singleStepButton')){const b=document.createElement('button');b.id='singleStepButton';b.className='btn';b.textContent='Step +1s';b.onclick=()=>sendCommand('step',{seconds:1},'operator');simControls.appendChild(b)}
   }
+  function filterEvidence(mf){
+    if(!mf||!mf.configured)return'Waste/sludge quantity: NOT MODELED';
+    const load=mf.loading_fraction==null?'UNAVAILABLE':`${(Number(mf.loading_fraction)*100).toFixed(1)}%`;
+    const suspended=mf.suspended_solids_g==null?'UNAVAILABLE':`${num(mf.suspended_solids_g,2)} g`;
+    const captured=mf.captured_solids_g==null?'UNAVAILABLE':`${num(mf.captured_solids_g,2)} g`;
+    const tss=mf.tss_mg_l==null?'UNAVAILABLE':`${num(mf.tss_mg_l,3)} mg/L`;
+    const turbidity=mf.turbidity_ntu==null?'UNAVAILABLE':`${num(mf.turbidity_ntu,2)} NTU`;
+    return `Suspended ${suspended} · captured ${captured} · load ${load} · TSS ${tss} · turbidity ${turbidity} · clarity ${esc(mf.water_clarity_conclusion||'NOT_ESTABLISHED')}`;
+  }
   function renderProcessVisual(pv){
     installStage();const stage=document.getElementById('animatedPondStage');if(!stage||!pv)return;
     stage.classList.toggle('motion-paused',!!pv.simulation_paused);
-    const wm=pv.water_management||{},circ=pv.circulation||{},aer=pv.aeration||{};
+    const wm=pv.water_management||{},circ=pv.circulation||{},aer=pv.aeration||{},mf=pv.mechanical_filtration||{};
     const level=clamp(wm.water_level_pct,0,100),flow=Math.max(0,Number(circ.measured_total_flow_l_min)||0),dox=Math.max(0,Number(pv.dissolved_oxygen_mg_l)||0);
     document.getElementById('pondWater').style.height=`${level}%`;document.getElementById('pondLevelLabel').textContent=`Level ${level.toFixed(1)}%`;document.getElementById('pondDoLabel').textContent=`DO ${dox.toFixed(2)} mg/L`;
     const primary=circ.primary||{},backup=circ.backup||{},ap=aer.primary||{},ab=aer.backup||{},top=wm.top_up||{},drain=wm.drain||{},bw=wm.backwash||{};
@@ -53,7 +63,8 @@ ANIMATED_POND_SCRIPT = r"""
     const main=document.getElementById('chipMain'),back=document.getElementById('chipBackup'),air=document.getElementById('chipAeration'),water=document.getElementById('chipWater');main.className=`device-chip chip-main${statusClass(primary)}`;back.className=`device-chip chip-backup${statusClass(backup)}`;air.className=`device-chip chip-aeration${statusClass(ap)||statusClass(ab)}`;water.className=`device-chip chip-water${(top.motion_active||drain.motion_active||bw.motion_active)?' active':''}`;
     main.querySelector('small').innerHTML=pathLabel(primary);back.querySelector('small').innerHTML=pathLabel(backup);air.querySelector('small').innerHTML=`Primary ${pathLabel(ap)}<br>Backup ${pathLabel(ab)}`;water.querySelector('small').innerHTML=`Top-up ${pathLabel(top)}<br>Drain ${pathLabel(drain)}<br>Backwash ${pathLabel(bw)}`;
     document.getElementById('pondStageMeta').innerHTML=`${esc(pv.classification)} · ${esc(pv.operating_mode)} / ${esc(pv.operating_phase)}<br>${flow.toFixed(2)} L/min · ${pv.simulation_paused?'PAUSED':'RUNNING'} · ${Number(pv.simulation_acceleration||1).toFixed(1)}×`;
-    document.getElementById('pondVisualWarning').textContent=`Discharge ${esc(wm.discharge_kind||'NONE')} · rate ${wm.quantitative_discharge_rate_l_min==null?'NOT MODELED':wm.quantitative_discharge_rate_l_min+' L/min'} · Waste/sludge quantity NOT MODELED`;
+    const rate=wm.quantitative_discharge_rate_l_min==null?'UNAVAILABLE':`${num(wm.quantitative_discharge_rate_l_min,2)} L/min`;
+    document.getElementById('pondVisualWarning').textContent=`Discharge ${esc(wm.discharge_kind||'NONE')} · rate ${rate} · ${filterEvidence(mf)}`;
   }
   installStage();
   const baseRenderSnapshot=window.renderSnapshot;
