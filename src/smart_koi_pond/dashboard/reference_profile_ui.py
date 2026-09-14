@@ -1,3 +1,5 @@
+# ruff: noqa: E501
+
 import json
 
 from smart_koi_pond.digital_twin.hydraulics import reference_standard_metric_v1
