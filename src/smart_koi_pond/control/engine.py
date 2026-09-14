@@ -30,6 +30,15 @@ class SimulationControlPolicy:
     low_water_max_level_gain_pct: float = 15.0
     low_water_verification_delay_seconds: float = 30.0
     water_level_verification_min_delta: float = 0.5
+    tan_watch_above: float | None = None
+    tan_emergency_above: float | None = None
+    nitrite_watch_above: float | None = None
+    nitrite_emergency_above: float | None = None
+    nitrate_watch_above: float | None = None
+    ph_watch_below: float | None = None
+    ph_watch_above: float | None = None
+    ph_emergency_below: float | None = None
+    ph_emergency_above: float | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -40,6 +49,32 @@ class SimulationControlPolicy:
             raise ValueError(
                 "temperature_emergency_above must be greater than temperature_watch_above"
             )
+        if (
+            self.tan_watch_above is not None
+            and self.tan_emergency_above is not None
+            and self.tan_emergency_above <= self.tan_watch_above
+        ):
+            raise ValueError("tan_emergency_above must be greater than tan_watch_above")
+        if (
+            self.nitrite_watch_above is not None
+            and self.nitrite_emergency_above is not None
+            and self.nitrite_emergency_above <= self.nitrite_watch_above
+        ):
+            raise ValueError(
+                "nitrite_emergency_above must be greater than nitrite_watch_above"
+            )
+        if (
+            self.ph_watch_below is not None
+            and self.ph_emergency_below is not None
+            and self.ph_emergency_below >= self.ph_watch_below
+        ):
+            raise ValueError("ph_emergency_below must be below ph_watch_below")
+        if (
+            self.ph_watch_above is not None
+            and self.ph_emergency_above is not None
+            and self.ph_emergency_above <= self.ph_watch_above
+        ):
+            raise ValueError("ph_emergency_above must be above ph_watch_above")
 
         if self.low_water_auto_recovery_enabled:
             if self.water_level_recover_target is None:
@@ -76,11 +111,52 @@ def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
     return StateEstimate(timestamp=timestamp, values=values, quality=quality)
 
 
+def _mark_missing(
+    state: SystemState,
+    reasons: list[str],
+    parameter: str,
+) -> SystemState:
+    if state == SystemState.NORMAL:
+        state = SystemState.DEGRADED
+    reasons.append(f"REQUIRED_INPUT_MISSING:{parameter}")
+    return state
+
+
+def _classify_upper_limit(
+    *,
+    state: SystemState,
+    reasons: list[str],
+    value: float | None,
+    quality: DataQuality | None,
+    watch_above: float | None,
+    emergency_above: float | None,
+    parameter: str,
+    watch_reason: str,
+    emergency_reason: str,
+) -> SystemState:
+    if watch_above is None and emergency_above is None:
+        return state
+    if quality != DataQuality.GOOD or value is None:
+        return _mark_missing(state, reasons, parameter)
+    if emergency_above is not None and value >= emergency_above:
+        reasons.append(emergency_reason)
+        return SystemState.EMERGENCY
+    if watch_above is not None and value >= watch_above:
+        if state == SystemState.NORMAL:
+            state = SystemState.WATCH
+        reasons.append(watch_reason)
+    return state
+
+
 def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classification:
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
     level = estimate.values.get("water_level_pct")
     temperature = estimate.values.get("temperature_c")
+    tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
+    nitrite = estimate.values.get("nitrite_mg_l")
+    nitrate = estimate.values.get("nitrate_mg_l")
+    ph = estimate.values.get("ph")
     reasons: list[str] = []
 
     if estimate.quality.get("dissolved_oxygen_mg_l") != DataQuality.GOOD:
@@ -100,9 +176,7 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     )
     if temperature_policy_active:
         if estimate.quality.get("temperature_c") != DataQuality.GOOD:
-            if state == SystemState.NORMAL:
-                state = SystemState.DEGRADED
-            reasons.append("REQUIRED_INPUT_MISSING:TEMPERATURE")
+            state = _mark_missing(state, reasons, "TEMPERATURE")
         elif (
             temperature is not None
             and policy.temperature_emergency_above is not None
@@ -120,24 +194,84 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
             reasons.append("TEMPERATURE_HIGH")
 
     if estimate.quality.get("circulation_flow_l_min") != DataQuality.GOOD:
-        state = SystemState.DEGRADED if state == SystemState.NORMAL else state
-        reasons.append("REQUIRED_INPUT_MISSING:FLOW")
+        state = _mark_missing(state, reasons, "FLOW")
     elif flow is not None and flow < policy.flow_watch_below:
         if state == SystemState.NORMAL:
             state = SystemState.DEGRADED
         reasons.append("FLOW_LOW")
 
     if policy.low_water_auto_recovery_enabled and (
-        estimate.quality.get("water_level_pct") != DataQuality.GOOD
-        or level is None
+        estimate.quality.get("water_level_pct") != DataQuality.GOOD or level is None
     ):
-        if state == SystemState.NORMAL:
-            state = SystemState.DEGRADED
-        reasons.append("REQUIRED_INPUT_MISSING:WATER_LEVEL")
+        state = _mark_missing(state, reasons, "WATER_LEVEL")
     elif level is not None and level < policy.water_level_low_below:
         if state in {SystemState.NORMAL, SystemState.WATCH}:
             state = SystemState.DEGRADED
         reasons.append("WATER_LEVEL_LOW")
+
+    state = _classify_upper_limit(
+        state=state,
+        reasons=reasons,
+        value=tan,
+        quality=estimate.quality.get("total_ammonia_nitrogen_mg_l"),
+        watch_above=policy.tan_watch_above,
+        emergency_above=policy.tan_emergency_above,
+        parameter="TAN",
+        watch_reason="TAN_HIGH",
+        emergency_reason="TAN_EMERGENCY",
+    )
+    state = _classify_upper_limit(
+        state=state,
+        reasons=reasons,
+        value=nitrite,
+        quality=estimate.quality.get("nitrite_mg_l"),
+        watch_above=policy.nitrite_watch_above,
+        emergency_above=policy.nitrite_emergency_above,
+        parameter="NITRITE",
+        watch_reason="NITRITE_HIGH",
+        emergency_reason="NITRITE_EMERGENCY",
+    )
+    state = _classify_upper_limit(
+        state=state,
+        reasons=reasons,
+        value=nitrate,
+        quality=estimate.quality.get("nitrate_mg_l"),
+        watch_above=policy.nitrate_watch_above,
+        emergency_above=None,
+        parameter="NITRATE",
+        watch_reason="NITRATE_HIGH",
+        emergency_reason="NITRATE_EMERGENCY",
+    )
+
+    ph_policy_active = any(
+        value is not None
+        for value in (
+            policy.ph_watch_below,
+            policy.ph_watch_above,
+            policy.ph_emergency_below,
+            policy.ph_emergency_above,
+        )
+    )
+    if ph_policy_active:
+        if estimate.quality.get("ph") != DataQuality.GOOD or ph is None:
+            state = _mark_missing(state, reasons, "PH")
+        elif (
+            policy.ph_emergency_below is not None
+            and ph <= policy.ph_emergency_below
+        ) or (
+            policy.ph_emergency_above is not None
+            and ph >= policy.ph_emergency_above
+        ):
+            state = SystemState.EMERGENCY
+            reasons.append("PH_EMERGENCY")
+        elif (
+            policy.ph_watch_below is not None and ph <= policy.ph_watch_below
+        ) or (
+            policy.ph_watch_above is not None and ph >= policy.ph_watch_above
+        ):
+            if state == SystemState.NORMAL:
+                state = SystemState.WATCH
+            reasons.append("PH_OUT_OF_TARGET")
 
     return Classification(state, tuple(reasons) or ("STATE_HEALTHY",))
 
@@ -147,22 +281,69 @@ def decide(
     classification: Classification,
     policy: SimulationControlPolicy,
 ) -> list[CommandIntent]:
-    intents: list[CommandIntent] = []
+    intents: dict[str, CommandIntent] = {}
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
+    tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
+    nitrite = estimate.values.get("nitrite_mg_l")
+    ph = estimate.values.get("ph")
 
-    if do_value is not None and do_value <= policy.do_watch_below:
-        intents.append(
-            CommandIntent("backup_aerator", True, CommandOwner.AUTO, "LOW_DO_CORRECTION")
+    chemistry_support = (
+        tan is not None
+        and policy.tan_watch_above is not None
+        and tan >= policy.tan_watch_above
+    ) or (
+        nitrite is not None
+        and policy.nitrite_watch_above is not None
+        and nitrite >= policy.nitrite_watch_above
+    )
+
+    if (do_value is not None and do_value <= policy.do_watch_below) or chemistry_support:
+        reason = "BIOLOGICAL_LOAD_SUPPORT" if chemistry_support else "LOW_DO_CORRECTION"
+        intents["backup_aerator"] = CommandIntent(
+            "backup_aerator",
+            True,
+            CommandOwner.AUTO,
+            reason,
         )
     elif do_value is not None and do_value >= policy.do_recover_above:
-        intents.append(
-            CommandIntent("backup_aerator", False, CommandOwner.AUTO, "DO_RECOVERED")
+        intents["backup_aerator"] = CommandIntent(
+            "backup_aerator",
+            False,
+            CommandOwner.AUTO,
+            "DO_RECOVERED",
         )
 
-    if flow is not None and flow < policy.flow_watch_below:
-        intents.append(CommandIntent("backup_pump", True, CommandOwner.AUTO, "LOW_FLOW_BACKUP"))
+    if (flow is not None and flow < policy.flow_watch_below) or chemistry_support:
+        reason = "BIOFILTER_FLOW_SUPPORT" if chemistry_support else "LOW_FLOW_BACKUP"
+        intents["backup_pump"] = CommandIntent(
+            "backup_pump",
+            True,
+            CommandOwner.AUTO,
+            reason,
+        )
+
+    ph_outside = (
+        ph is not None
+        and (
+            (policy.ph_watch_below is not None and ph <= policy.ph_watch_below)
+            or (policy.ph_watch_above is not None and ph >= policy.ph_watch_above)
+        )
+    )
+    if chemistry_support or ph_outside:
+        reason = "WATER_QUALITY_FEED_INHIBIT"
+        intents["feeder"] = CommandIntent(
+            "feeder",
+            False,
+            CommandOwner.AUTO,
+            reason,
+        )
 
     if classification.state in {SystemState.EMERGENCY, SystemState.FAILSAFE}:
-        intents.append(CommandIntent("feeder", False, CommandOwner.AUTO, "FEEDING_SAFETY_INHIBIT"))
-    return intents
+        intents["feeder"] = CommandIntent(
+            "feeder",
+            False,
+            CommandOwner.AUTO,
+            "FEEDING_SAFETY_INHIBIT",
+        )
+    return list(intents.values())

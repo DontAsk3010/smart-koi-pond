@@ -33,9 +33,7 @@ def test_modeled_route_flow_reaches_canonical_process_projection() -> None:
             EnvironmentInputs(28.0, 0.2),
         ),
         POLICY,
-        clock=SimulationClock.start(
-            datetime(2026, 1, 1, tzinfo=UTC)
-        ),
+        clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
         config_version="hydraulic-projection-test-v1",
     )
     runtime.actuators.assets["main_pump"].feedback_on = True
@@ -46,7 +44,7 @@ def test_modeled_route_flow_reaches_canonical_process_projection() -> None:
             revision="r1",
             effective_volume_l=20_000.0,
             circulation_turnovers_per_hour_guide=1.0,
-            provenance=EngineeringProvenance.DESIGN_ASSUMPTION,
+            provenance=EngineeringProvenance.USER_CONFIGURED_SCENARIO,
             routes=(
                 HydraulicRouteSpec(
                     route_id="main-route",
@@ -63,6 +61,6 @@ def test_modeled_route_flow_reaches_canonical_process_projection() -> None:
     circulation = process["circulation"]
 
     assert circulation["modeled_route_flows_l_min"]["main-route"] == pytest.approx(400.0)
-    assert circulation["route_flow_provenance"] == "DESIGN_ASSUMPTION"
+    assert circulation["route_flow_provenance"] == "USER_CONFIGURED_SCENARIO"
     assert "PER_ROUTE_FLOW_MODELED_NOT_PHYSICALLY_METERED" in process["limitations"]
     assert "NO_PER_ROUTE_FLOW_METERING" not in process["limitations"]

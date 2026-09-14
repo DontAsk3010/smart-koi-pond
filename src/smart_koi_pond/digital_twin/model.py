@@ -2,6 +2,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from smart_koi_pond.digital_twin.biology import (
+    BiologicalProcessModel,
+    BiologicalProcessProfile,
+)
 from smart_koi_pond.digital_twin.hydraulics import HydraulicNetworkModel, PondDesignProfile
 from smart_koi_pond.domain.models import PondState
 
@@ -27,9 +31,9 @@ class ActuatorEffects:
 class PondModel:
     """Deterministic production-lineage pond model.
 
-    Without a PondDesignProfile the model preserves the accepted V1 control-test behavior.
-    Once a profile is configured, hydraulic flow and optional water-management rates become
-    volume-aware and route-aware while retaining explicit design provenance.
+    Without configured hydraulic/biological profiles the model preserves the accepted
+    V1 control-test behavior. Configured profiles add route-aware hydraulics and
+    explicit-input biological chemistry without fabricating missing engineering values.
     """
 
     def __init__(
@@ -39,29 +43,46 @@ class PondModel:
         effects: ActuatorEffects | None = None,
         *,
         hydraulics: HydraulicNetworkModel | None = None,
+        biology: BiologicalProcessModel | None = None,
     ) -> None:
         self.state = state
         self.environment = environment
         self.effects = effects or ActuatorEffects()
         self.hydraulics = hydraulics
+        self.biology = biology
 
     def set_truth(self, parameter: str, value: float) -> None:
-        if parameter == "temperature_c":
-            self.state.temperature_c = value
-        elif parameter == "dissolved_oxygen_mg_l":
-            self.state.dissolved_oxygen_mg_l = value
-        elif parameter == "ph":
-            self.state.ph = value
-        elif parameter == "water_level_pct":
-            self.state.water_level_pct = value
-        else:
+        attributes = {
+            "temperature_c": "temperature_c",
+            "dissolved_oxygen_mg_l": "dissolved_oxygen_mg_l",
+            "ph": "ph",
+            "water_level_pct": "water_level_pct",
+            "total_ammonia_nitrogen_mg_l": "total_ammonia_nitrogen_mg_l",
+            "nitrite_mg_l": "nitrite_mg_l",
+            "nitrate_mg_l": "nitrate_mg_l",
+            "alkalinity_mg_l_as_caco3": "alkalinity_mg_l_as_caco3",
+            "waste_solids_g": "waste_solids_g",
+        }
+        attribute = attributes.get(parameter)
+        if attribute is None:
             raise KeyError(parameter)
+        setattr(self.state, attribute, float(value))
 
     def configure_design_profile(self, profile: PondDesignProfile) -> None:
         if self.hydraulics is None:
             self.hydraulics = HydraulicNetworkModel(profile)
         else:
             self.hydraulics.configure_profile(profile)
+
+    def configure_biological_profile(self, profile: BiologicalProcessProfile) -> None:
+        if self.hydraulics is None:
+            raise RuntimeError(
+                "hydraulic Pond Profile must be configured before biological process profile"
+            )
+        if self.biology is None:
+            self.biology = BiologicalProcessModel(profile)
+        else:
+            self.biology.configure_profile(profile)
 
     def set_hydraulic_restriction(self, route_id: str, throughput_factor: float) -> None:
         if self.hydraulics is None:
@@ -92,18 +113,55 @@ class PondModel:
             **self.hydraulics.snapshot(),
         }
 
+    def biological_snapshot(self) -> dict[str, Any]:
+        if self.biology is None:
+            return {
+                "configured": False,
+                "status": "NOT_CONFIGURED",
+                "provenance": "UNAVAILABLE",
+            }
+        return self.biology.snapshot()
+
+    def _biological_truth_snapshot(self) -> dict[str, float | None]:
+        return {
+            "total_ammonia_nitrogen_mg_l": self.state.total_ammonia_nitrogen_mg_l,
+            "nitrite_mg_l": self.state.nitrite_mg_l,
+            "nitrate_mg_l": self.state.nitrate_mg_l,
+            "alkalinity_mg_l_as_caco3": self.state.alkalinity_mg_l_as_caco3,
+            "waste_solids_g": self.state.waste_solids_g,
+        }
+
     def checkpoint_state(self) -> dict[str, Any]:
         return {
             "hydraulics": (
                 self.hydraulics.checkpoint_state() if self.hydraulics is not None else None
-            )
+            ),
+            "biology": self.biology.checkpoint_state() if self.biology is not None else None,
+            "biological_truth": self._biological_truth_snapshot(),
         }
 
     def restore_engineering_state(self, state: Mapping[str, Any] | None) -> None:
-        if not state or state.get("hydraulics") is None:
+        if not state:
             self.hydraulics = None
+            self.biology = None
             return
-        self.hydraulics = HydraulicNetworkModel.from_checkpoint(state["hydraulics"])
+        hydraulic_state = state.get("hydraulics")
+        biology_state = state.get("biology")
+        self.hydraulics = (
+            HydraulicNetworkModel.from_checkpoint(hydraulic_state)
+            if hydraulic_state is not None
+            else None
+        )
+        self.biology = (
+            BiologicalProcessModel.from_checkpoint(biology_state)
+            if biology_state is not None
+            else None
+        )
+        for parameter, value in state.get("biological_truth", {}).items():
+            if value is not None:
+                self.set_truth(parameter, float(value))
+            elif hasattr(self.state, parameter):
+                setattr(self.state, parameter, None)
 
     @staticmethod
     def _effect(actuator_effects: dict[str, float | bool], asset_id: str) -> float:
@@ -111,6 +169,22 @@ class PondModel:
         if isinstance(value, bool):
             return 1.0 if value else 0.0
         return min(1.0, max(0.0, float(value)))
+
+    def _biological_oxygen_demand(self, seconds: float) -> float:
+        if self.biology is None or self.hydraulics is None:
+            return 0.0
+        profile = self.hydraulics.profile
+        return self.biology.step(
+            self.state,
+            seconds=seconds,
+            volume_l=profile.effective_volume_l,
+            biomass_kg=profile.biomass_kg,
+            feed_kg_per_day=profile.feed_kg_per_day,
+            circulation_flow_l_min=self.state.circulation_flow_l_min,
+            required_circulation_flow_l_min=(
+                self.hydraulics.required_circulation_flow_l_min
+            ),
+        )
 
     def step(
         self,
@@ -138,7 +212,9 @@ class PondModel:
                 hydraulic_state["total_effective_flow_l_min"]
             )
 
+        biological_oxygen_demand = self._biological_oxygen_demand(seconds)
         do_delta = -self.environment.oxygen_demand_mg_l_per_hour
+        do_delta -= biological_oxygen_demand
         do_delta += e.primary_aerator_gain_mg_l_per_hour * primary_aerator_effect
         do_delta += e.backup_aerator_gain_mg_l_per_hour * backup_aerator_effect
         self.state.dissolved_oxygen_mg_l = max(

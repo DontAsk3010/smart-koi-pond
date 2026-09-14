@@ -4,10 +4,12 @@ from typing import Any
 from uuid import uuid4
 
 from smart_koi_pond.actuators.virtual import ActuatorFault
+from smart_koi_pond.control.validation import PLAUSIBILITY_BOUNDS
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.enums import (
     ActuatorSourceState,
     EventType,
+    ExecutionMode,
     SensorSourceState,
     SystemState,
 )
@@ -33,10 +35,24 @@ class ScenarioTrigger:
 class VirtualScenarioController:
     """Manual and automatic fault/recovery orchestration for the Digital Twin.
 
-    The controller only injects faults into virtual sources. Real I/O is never modified by
-    simulation actions. Runtime reset reuses the governed checkpoint/restart path, which starts
-    outputs de-energized and requires recovery reconciliation instead of replaying stale commands.
+    The controller only injects faults/disturbances into simulation state. Real I/O is
+    never modified by simulation actions. Runtime reset reuses the governed checkpoint/
+    restart path, which starts outputs de-energized and requires recovery reconciliation
+    instead of replaying stale commands.
     """
+
+    ENVIRONMENT_ALIASES = {
+        "temperature": "temperature_c",
+        "do": "dissolved_oxygen_mg_l",
+        "ph": "ph",
+        "water_level": "water_level_pct",
+        "tan": "total_ammonia_nitrogen_mg_l",
+        "ammonia": "total_ammonia_nitrogen_mg_l",
+        "nitrite": "nitrite_mg_l",
+        "nitrate": "nitrate_mg_l",
+        "alkalinity": "alkalinity_mg_l_as_caco3",
+        "waste_solids": "waste_solids_g",
+    }
 
     def __init__(self, runtime: DigitalTwinRuntime) -> None:
         self.runtime = runtime
@@ -129,6 +145,41 @@ class VirtualScenarioController:
         self._event(
             "SIMULATION_ACTUATOR_FAULT_CLEARED",
             {"asset_id": asset_id, "origin": origin, "restart_required": False},
+        )
+
+    def set_environment_state(
+        self,
+        parameter: str,
+        value: float,
+        *,
+        origin: str = "MANUAL",
+    ) -> None:
+        if self.runtime.execution_mode != ExecutionMode.SIMULATION:
+            raise RuntimeError("environment disturbance injection requires SIMULATION mode")
+        canonical = self.ENVIRONMENT_ALIASES.get(parameter, parameter)
+        numeric = float(value)
+        if canonical == "waste_solids_g":
+            if numeric < 0:
+                raise ValueError("waste_solids_g must be non-negative")
+        else:
+            bounds = PLAUSIBILITY_BOUNDS.get(canonical)
+            if bounds is None:
+                raise KeyError(parameter)
+            if not bounds[0] <= numeric <= bounds[1]:
+                raise ValueError(
+                    f"{canonical} disturbance must remain within modeled plausibility bounds"
+                )
+        before = getattr(self.runtime.model.state, canonical)
+        self.runtime.model.set_truth(canonical, numeric)
+        self._event(
+            "SIMULATION_ENVIRONMENT_STATE_CHANGED",
+            {
+                "parameter": canonical,
+                "before": before,
+                "after": numeric,
+                "origin": origin,
+                "authority": "SIMULATION_ENGINEERING_ONLY",
+            },
         )
 
     def safe_runtime_reset(self, *, origin: str = "MANUAL") -> None:
@@ -224,6 +275,12 @@ class VirtualScenarioController:
             )
         elif action == "clear_actuator_fault":
             self.clear_actuator_fault(str(payload["asset_id"]), origin="AUTOMATIC")
+        elif action == "set_environment_state":
+            self.set_environment_state(
+                str(payload["parameter"]),
+                float(payload["value"]),
+                origin="AUTOMATIC",
+            )
         elif action == "start_blackout":
             self.runtime.start_blackout(str(payload.get("reason", "AUTOMATIC_POWER_LOSS")))
         elif action == "restore_power":
