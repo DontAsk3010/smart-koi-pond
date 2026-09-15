@@ -4,6 +4,10 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from smart_koi_pond.control.ammonia import (
+    UNIONIZED_AMMONIA_N_PARAMETER,
+    calculate_unionized_ammonia_n,
+)
 from smart_koi_pond.domain.enums import OperatingMode
 
 
@@ -21,6 +25,7 @@ class WaterQualityRecoveryPolicy:
     max_attempts: int = 1
     cooldown_seconds: float = 1800.0
     tan_recover_below: float | None = None
+    nh3_recover_below: float | None = None
     nitrite_recover_below: float | None = None
     nitrate_recover_below: float | None = None
     ph_recover_low: float | None = None
@@ -64,6 +69,8 @@ class WaterQualityRecoveryManager:
     _REASON_TO_PARAMETER = {
         "TAN_HIGH": "total_ammonia_nitrogen_mg_l",
         "TAN_EMERGENCY": "total_ammonia_nitrogen_mg_l",
+        "NH3_HIGH": UNIONIZED_AMMONIA_N_PARAMETER,
+        "NH3_EMERGENCY": UNIONIZED_AMMONIA_N_PARAMETER,
         "NITRITE_HIGH": "nitrite_mg_l",
         "NITRITE_EMERGENCY": "nitrite_mg_l",
         "NITRATE_HIGH": "nitrate_mg_l",
@@ -84,6 +91,8 @@ class WaterQualityRecoveryManager:
     def feed_inhibit_reason(snapshot: Any) -> str | None:
         reasons = set(snapshot.classification.reasons)
         for reason in (
+            "NH3_EMERGENCY",
+            "NH3_HIGH",
             "TAN_EMERGENCY",
             "TAN_HIGH",
             "NITRITE_EMERGENCY",
@@ -99,9 +108,11 @@ class WaterQualityRecoveryManager:
     def _active_reason(self, snapshot: Any) -> tuple[str, str, float] | None:
         reasons = set(snapshot.classification.reasons)
         for reason in (
+            "NH3_EMERGENCY",
             "TAN_EMERGENCY",
             "NITRITE_EMERGENCY",
             "PH_EMERGENCY",
+            "NH3_HIGH",
             "TAN_HIGH",
             "NITRITE_HIGH",
             "NITRATE_HIGH",
@@ -115,6 +126,21 @@ class WaterQualityRecoveryManager:
                 return reason, parameter, float(value)
         return None
 
+    @staticmethod
+    def _source_unionized_ammonia_n(
+        source_water: dict[str, Any],
+    ) -> float | None:
+        tan = source_water.get("total_ammonia_nitrogen_mg_l")
+        ph = source_water.get("ph")
+        temperature = source_water.get("temperature_c")
+        if tan is None or ph is None or temperature is None:
+            return None
+        return calculate_unionized_ammonia_n(
+            tan_n_mg_l=float(tan),
+            ph=float(ph),
+            temperature_c=float(temperature),
+        ).unionized_ammonia_n_mg_l
+
     def _source_supports_safer_direction(
         self,
         *,
@@ -124,6 +150,9 @@ class WaterQualityRecoveryManager:
     ) -> bool:
         if not source_water.get("pond_use_qualified"):
             return False
+        if parameter == UNIONIZED_AMMONIA_N_PARAMETER:
+            source_nh3 = self._source_unionized_ammonia_n(source_water)
+            return source_nh3 is not None and source_nh3 < pond_value
         source_value = source_water.get(parameter)
         if source_value is None:
             return False
@@ -148,6 +177,11 @@ class WaterQualityRecoveryManager:
             return (
                 self.policy.tan_recover_below is not None
                 and value < self.policy.tan_recover_below
+            )
+        if parameter == UNIONIZED_AMMONIA_N_PARAMETER:
+            return (
+                self.policy.nh3_recover_below is not None
+                and value < self.policy.nh3_recover_below
             )
         if parameter == "nitrite_mg_l":
             return (
@@ -256,7 +290,7 @@ class WaterQualityRecoveryManager:
 
     def status(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "policy": asdict(self.policy),
             "enabled": self.policy.enabled,
             "active": (
