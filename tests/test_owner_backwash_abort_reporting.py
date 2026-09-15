@@ -1,7 +1,7 @@
+from test_owner_integrated_operation import _configured_runtime
+
 from smart_koi_pond.actuators.virtual import ActuatorFault
 from smart_koi_pond.domain.enums import OperatingMode
-
-from test_owner_integrated_operation import _configured_runtime
 
 
 def test_mid_backwash_rejection_reports_partial_discharge_honestly() -> None:
