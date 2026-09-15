@@ -62,7 +62,7 @@ def test_acceptance_ui_uses_canonical_command_and_snapshot_evidence_only() -> No
     assert "snapshot.water_recovery" in script
     assert "fetch('/api/command'" not in script
     assert "new WebSocket" not in script
-    assert "automatic acid/base/salt/binder dosing remains CLOSED" in script
+    assert "Automatic acid/base/salt/binder dosing remains CLOSED" in script
 
 
 def test_same_tan_visual_scenario_uses_canonical_nh3_derivation() -> None:
