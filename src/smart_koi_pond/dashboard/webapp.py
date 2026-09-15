@@ -37,6 +37,10 @@ from smart_koi_pond.dashboard.trend_event_ui import (
     TREND_EVENT_SCRIPT,
     TREND_EVENT_STYLE,
 )
+from smart_koi_pond.dashboard.virtual_pond_home_ui import (
+    VIRTUAL_POND_HOME_SCRIPT,
+    VIRTUAL_POND_HOME_STYLE,
+)
 from smart_koi_pond.dashboard.web_ui import INDEX_HTML
 
 COMPOSED_INDEX_HTML = INDEX_HTML.replace(
@@ -48,7 +52,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{EQUIPMENT_DETAIL_STYLE}"
         f"{TREND_EVENT_STYLE}"
         f"{INCIDENT_RECOVERY_STORY_STYLE}"
-        f"{FILTRATION_BACKWASH_CAUSALITY_STYLE}</head>"
+        f"{FILTRATION_BACKWASH_CAUSALITY_STYLE}"
+        f"{VIRTUAL_POND_HOME_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -64,7 +69,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{EQUIPMENT_DETAIL_SCRIPT}</script>"
         f"<script>{TREND_EVENT_SCRIPT}</script>"
         f"<script>{INCIDENT_RECOVERY_STORY_SCRIPT}</script>"
-        f"<script>{FILTRATION_BACKWASH_CAUSALITY_SCRIPT}</script></body>"
+        f"<script>{FILTRATION_BACKWASH_CAUSALITY_SCRIPT}</script>"
+        f"<script>{VIRTUAL_POND_HOME_SCRIPT}</script></body>"
     ),
 )
 
