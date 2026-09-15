@@ -16,6 +16,10 @@ from smart_koi_pond.dashboard.governance_status_ui import (
     GOVERNANCE_STATUS_SCRIPT,
     GOVERNANCE_STATUS_STYLE,
 )
+from smart_koi_pond.dashboard.incident_recovery_story_ui import (
+    INCIDENT_RECOVERY_STORY_SCRIPT,
+    INCIDENT_RECOVERY_STORY_STYLE,
+)
 from smart_koi_pond.dashboard.integrated_control_ui import INTEGRATED_CONTROL_UI_SCRIPT
 from smart_koi_pond.dashboard.integrated_virtual_pond_ui import (
     INTEGRATED_VIRTUAL_POND_SCRIPT,
@@ -38,7 +42,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{INTEGRATED_VIRTUAL_POND_STYLE}"
         f"{GOVERNANCE_STATUS_STYLE}"
         f"{EQUIPMENT_DETAIL_STYLE}"
-        f"{TREND_EVENT_STYLE}</head>"
+        f"{TREND_EVENT_STYLE}"
+        f"{INCIDENT_RECOVERY_STORY_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -52,7 +57,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{REFERENCE_PROFILE_UI_SCRIPT}</script>"
         f"<script>{GOVERNANCE_STATUS_SCRIPT}</script>"
         f"<script>{EQUIPMENT_DETAIL_SCRIPT}</script>"
-        f"<script>{TREND_EVENT_SCRIPT}</script></body>"
+        f"<script>{TREND_EVENT_SCRIPT}</script>"
+        f"<script>{INCIDENT_RECOVERY_STORY_SCRIPT}</script></body>"
     ),
 )
 
