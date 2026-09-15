@@ -38,6 +38,10 @@ from smart_koi_pond.dashboard.owner_cockpit_motion_guard_ui import (
     OWNER_COCKPIT_MOTION_GUARD_SCRIPT,
     OWNER_COCKPIT_MOTION_GUARD_STYLE,
 )
+from smart_koi_pond.dashboard.owner_integrated_operation_ui import (
+    OWNER_INTEGRATED_OPERATION_SCRIPT,
+    OWNER_INTEGRATED_OPERATION_STYLE,
+)
 from smart_koi_pond.dashboard.owner_operational_cockpit_ui import (
     OWNER_OPERATIONAL_COCKPIT_SCRIPT,
     OWNER_OPERATIONAL_COCKPIT_STYLE,
@@ -73,6 +77,7 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{SIDEBAR_NAVIGATION_STYLE}"
         f"{OWNER_OPERATIONAL_COCKPIT_STYLE}"
         f"{OWNER_COCKPIT_MOTION_GUARD_STYLE}"
+        f"{OWNER_INTEGRATED_OPERATION_STYLE}"
         f"{BROWSER_3D_POND_STYLE}</head>"
     ),
 ).replace(
@@ -94,6 +99,7 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{SIDEBAR_NAVIGATION_SCRIPT}</script>"
         f"<script>{OWNER_OPERATIONAL_COCKPIT_SCRIPT}</script>"
         f"<script>{OWNER_COCKPIT_MOTION_GUARD_SCRIPT}</script>"
+        f"<script>{OWNER_INTEGRATED_OPERATION_SCRIPT}</script>"
         f"<script>{BROWSER_3D_POND_SCRIPT}</script></body>"
     ),
 )
