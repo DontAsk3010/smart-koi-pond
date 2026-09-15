@@ -104,7 +104,9 @@ class WaterQualityThresholdProfile:
             raise ValueError("pH recovery low must be below recovery high")
         if self.automatic_water_exchange_enabled:
             if self.exchange_fraction_pct is None:
-                raise ValueError("exchange_fraction_pct required when automatic recovery is enabled")
+                raise ValueError(
+                    "exchange_fraction_pct required when automatic recovery is enabled"
+                )
             if not 0 < self.exchange_fraction_pct <= 30.0:
                 raise ValueError("exchange_fraction_pct must be >0 and <=30")
         if self.max_recovery_attempts <= 0:
@@ -112,7 +114,9 @@ class WaterQualityThresholdProfile:
         if self.recovery_cooldown_seconds < 0:
             raise ValueError("recovery_cooldown_seconds cannot be negative")
         if self.provenance == EngineeringProvenance.UNAVAILABLE:
-            raise ValueError("configured threshold profile cannot use UNAVAILABLE provenance")
+            raise ValueError(
+                "configured threshold profile cannot use UNAVAILABLE provenance"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
