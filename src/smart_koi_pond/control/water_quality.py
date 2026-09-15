@@ -255,6 +255,9 @@ class WaterQualityRecoveryManager:
                 else None
             ),
             "attempt_counts": dict(self.attempt_counts),
+            "last_finished_at": (
+                self.last_finished_at.isoformat() if self.last_finished_at is not None else None
+            ),
             "last_outcome": self.last_outcome,
             "last_reason": self.last_reason,
             "lockout_reason": self.lockout_reason,
