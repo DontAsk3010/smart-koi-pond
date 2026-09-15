@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime  # noqa: I001
 from types import SimpleNamespace
 
 import pytest
@@ -209,7 +209,7 @@ def test_nh3_emergency_inhibits_feed_and_requests_available_life_support():
     assert feeder.reason == "FEEDING_SAFETY_INHIBIT"
 
 
-def test_nh3_water_exchange_requires_qualified_source_that_is_actually_safer():
+def test_nh3_water_exchange_requires_projected_post_mix_improvement():
     manager = WaterQualityRecoveryManager(
         WaterQualityRecoveryPolicy(
             enabled=True,
@@ -224,24 +224,48 @@ def test_nh3_water_exchange_requires_qualified_source_that_is_actually_safer():
         operating_mode=OperatingMode.NORMAL_AUTO,
         classification=SimpleNamespace(reasons=("NH3_HIGH",)),
         estimate=SimpleNamespace(
-            values={UNIONIZED_AMMONIA_PARAMETER: 0.03, "water_level_pct": 85.0}
+            values={
+                UNIONIZED_AMMONIA_PARAMETER: 0.0327328927,
+                "water_level_pct": 85.0,
+                "total_ammonia_nitrogen_mg_l": 0.5,
+                "ph": 8.0,
+                "temperature_c": 25.0,
+                "alkalinity_mg_l_as_caco3": 100.0,
+            }
         ),
     )
-    unsafe_source = {
+    unqualified_source = {
         "pond_use_qualified": False,
         "total_ammonia_nitrogen_mg_l": 0.0,
         "ph": 7.0,
         "temperature_c": 25.0,
+        "alkalinity_mg_l_as_caco3": 100.0,
     }
-    assert manager.observe(snapshot, unsafe_source) is None
+    assert manager.observe(snapshot, unqualified_source) is None
     assert manager.last_outcome == "NO_SAFE_AUTOMATIC_WATER_EXCHANGE_PATH"
 
-    manager.last_outcome = None
+    high_buffer_high_ph_source = {
+        "pond_use_qualified": True,
+        "total_ammonia_nitrogen_mg_l": 0.01,
+        "ph": 10.0,
+        "temperature_c": 30.0,
+        "alkalinity_mg_l_as_caco3": 5000.0,
+    }
+    standalone_source_nh3 = calculate_unionized_ammonia_n(
+        tan_n_mg_l=0.01,
+        ph=10.0,
+        temperature_c=30.0,
+    ).unionized_ammonia_nh3_mg_l
+    assert standalone_source_nh3 < snapshot.estimate.values[UNIONIZED_AMMONIA_PARAMETER]
+    assert manager.observe(snapshot, high_buffer_high_ph_source) is None
+    assert manager.last_outcome == "NO_SAFE_AUTOMATIC_WATER_EXCHANGE_PATH"
+
     safe_source = {
         "pond_use_qualified": True,
         "total_ammonia_nitrogen_mg_l": 0.1,
         "ph": 7.5,
         "temperature_c": 25.0,
+        "alkalinity_mg_l_as_caco3": 100.0,
     }
     request = manager.observe(snapshot, safe_source)
     assert request is not None
