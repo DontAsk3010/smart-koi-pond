@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from math import log10
 from typing import Any
 
+from smart_koi_pond.control.ammonia import (
+    UNIONIZED_AMMONIA_PARAMETER,
+    calculate_unionized_ammonia_n,
+)
 from smart_koi_pond.domain.enums import OperatingMode
 
 
@@ -13,7 +18,8 @@ class WaterQualityRecoveryPolicy:
 
     Thresholds remain in SimulationControlPolicy. This policy only governs whether an
     already classified chemistry problem may use the existing governed WATER_CHANGE
-    workflow and how retries/recovery verification are bounded.
+    workflow and how retries/recovery verification are bounded. NH3 values are
+    molecular un-ionized ammonia in mg/L, not NH3-N.
     """
 
     enabled: bool = False
@@ -21,6 +27,7 @@ class WaterQualityRecoveryPolicy:
     max_attempts: int = 1
     cooldown_seconds: float = 1800.0
     tan_recover_below: float | None = None
+    nh3_recover_below: float | None = None
     nitrite_recover_below: float | None = None
     nitrate_recover_below: float | None = None
     ph_recover_low: float | None = None
@@ -64,6 +71,8 @@ class WaterQualityRecoveryManager:
     _REASON_TO_PARAMETER = {
         "TAN_HIGH": "total_ammonia_nitrogen_mg_l",
         "TAN_EMERGENCY": "total_ammonia_nitrogen_mg_l",
+        "NH3_HIGH": UNIONIZED_AMMONIA_PARAMETER,
+        "NH3_EMERGENCY": UNIONIZED_AMMONIA_PARAMETER,
         "NITRITE_HIGH": "nitrite_mg_l",
         "NITRITE_EMERGENCY": "nitrite_mg_l",
         "NITRATE_HIGH": "nitrate_mg_l",
@@ -84,6 +93,8 @@ class WaterQualityRecoveryManager:
     def feed_inhibit_reason(snapshot: Any) -> str | None:
         reasons = set(snapshot.classification.reasons)
         for reason in (
+            "NH3_EMERGENCY",
+            "NH3_HIGH",
             "TAN_EMERGENCY",
             "TAN_HIGH",
             "NITRITE_EMERGENCY",
@@ -99,9 +110,11 @@ class WaterQualityRecoveryManager:
     def _active_reason(self, snapshot: Any) -> tuple[str, str, float] | None:
         reasons = set(snapshot.classification.reasons)
         for reason in (
+            "NH3_EMERGENCY",
             "TAN_EMERGENCY",
             "NITRITE_EMERGENCY",
             "PH_EMERGENCY",
+            "NH3_HIGH",
             "TAN_HIGH",
             "NITRITE_HIGH",
             "NITRATE_HIGH",
@@ -115,15 +128,109 @@ class WaterQualityRecoveryManager:
                 return reason, parameter, float(value)
         return None
 
+    def _projected_unionized_ammonia_after_exchange(
+        self,
+        *,
+        snapshot: Any,
+        source_water: dict[str, Any],
+    ) -> float | None:
+        """Project post-exchange molecular NH3 using the governed mixing basis.
+
+        The recovery manager must not approve an NH3 water exchange merely because
+        the source's standalone NH3 is lower. The final pond NH3 is recalculated from
+        projected TAN, pH, and temperature after the configured drain/refill fraction.
+        pH uses the same simplified buffer-weighted hydrogen-activity basis as the
+        canonical water-exchange model. Missing required evidence fails closed.
+        """
+        if self.policy.exchange_fraction_pct is None:
+            return None
+        values = snapshot.estimate.values
+        required_pond = {
+            "water_level_pct": values.get("water_level_pct"),
+            "total_ammonia_nitrogen_mg_l": values.get(
+                "total_ammonia_nitrogen_mg_l"
+            ),
+            "ph": values.get("ph"),
+            "temperature_c": values.get("temperature_c"),
+            "alkalinity_mg_l_as_caco3": values.get("alkalinity_mg_l_as_caco3"),
+        }
+        required_source = {
+            "total_ammonia_nitrogen_mg_l": source_water.get(
+                "total_ammonia_nitrogen_mg_l"
+            ),
+            "ph": source_water.get("ph"),
+            "temperature_c": source_water.get("temperature_c"),
+            "alkalinity_mg_l_as_caco3": source_water.get(
+                "alkalinity_mg_l_as_caco3"
+            ),
+        }
+        if any(value is None for value in required_pond.values()) or any(
+            value is None for value in required_source.values()
+        ):
+            return None
+
+        level = float(required_pond["water_level_pct"])
+        if level <= 0:
+            return None
+        refill_pct = min(float(self.policy.exchange_fraction_pct), level)
+        source_fraction = refill_pct / level
+        remaining_fraction = 1.0 - source_fraction
+
+        pond_tan = float(required_pond["total_ammonia_nitrogen_mg_l"])
+        source_tan = float(required_source["total_ammonia_nitrogen_mg_l"])
+        projected_tan = pond_tan * remaining_fraction + source_tan * source_fraction
+
+        pond_temperature = float(required_pond["temperature_c"])
+        source_temperature = float(required_source["temperature_c"])
+        projected_temperature = (
+            pond_temperature * remaining_fraction
+            + source_temperature * source_fraction
+        )
+
+        pond_alkalinity = max(
+            float(required_pond["alkalinity_mg_l_as_caco3"]),
+            1e-9,
+        )
+        source_alkalinity = max(
+            float(required_source["alkalinity_mg_l_as_caco3"]),
+            1e-9,
+        )
+        pond_weight = remaining_fraction * pond_alkalinity
+        source_weight = source_fraction * source_alkalinity
+        denominator = pond_weight + source_weight
+        if denominator <= 0:
+            return None
+        pond_ph = float(required_pond["ph"])
+        source_ph = float(required_source["ph"])
+        hydrogen_activity = (
+            10 ** (-pond_ph) * pond_weight
+            + 10 ** (-source_ph) * source_weight
+        ) / denominator
+        projected_ph = -log10(max(hydrogen_activity, 1e-14))
+        projected_ph = min(14.0, max(0.0, projected_ph))
+
+        return calculate_unionized_ammonia_n(
+            tan_n_mg_l=projected_tan,
+            ph=projected_ph,
+            temperature_c=projected_temperature,
+        ).unionized_ammonia_nh3_mg_l
+
     def _source_supports_safer_direction(
         self,
         *,
+        snapshot: Any,
         parameter: str,
         pond_value: float,
         source_water: dict[str, Any],
     ) -> bool:
         if not source_water.get("pond_use_qualified"):
             return False
+        if parameter == UNIONIZED_AMMONIA_PARAMETER:
+            projected_nh3 = self._projected_unionized_ammonia_after_exchange(
+                snapshot=snapshot,
+                source_water=source_water,
+            )
+            return projected_nh3 is not None and projected_nh3 < pond_value
         source_value = source_water.get(parameter)
         if source_value is None:
             return False
@@ -148,6 +255,11 @@ class WaterQualityRecoveryManager:
             return (
                 self.policy.tan_recover_below is not None
                 and value < self.policy.tan_recover_below
+            )
+        if parameter == UNIONIZED_AMMONIA_PARAMETER:
+            return (
+                self.policy.nh3_recover_below is not None
+                and value < self.policy.nh3_recover_below
             )
         if parameter == "nitrite_mg_l":
             return (
@@ -216,6 +328,7 @@ class WaterQualityRecoveryManager:
             self.last_reason = reason
             return None
         if not self._source_supports_safer_direction(
+            snapshot=snapshot,
             parameter=parameter,
             pond_value=value,
             source_water=source_water,
@@ -256,7 +369,7 @@ class WaterQualityRecoveryManager:
 
     def status(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "policy": asdict(self.policy),
             "enabled": self.policy.enabled,
             "active": (
@@ -282,5 +395,6 @@ class WaterQualityRecoveryManager:
             "last_outcome": self.last_outcome,
             "last_reason": self.last_reason,
             "lockout_reason": self.lockout_reason,
+            "nh3_concentration_basis": "MOLECULAR_NH3_MG_L",
             "automatic_chemical_dosing_authorized": False,
         }

@@ -131,6 +131,8 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
                 self.policy,
                 tan_watch_above=profile.tan_watch_above,
                 tan_emergency_above=profile.tan_emergency_above,
+                nh3_watch_above=profile.nh3_watch_above,
+                nh3_emergency_above=profile.nh3_emergency_above,
                 nitrite_watch_above=profile.nitrite_watch_above,
                 nitrite_emergency_above=profile.nitrite_emergency_above,
                 nitrate_watch_above=profile.nitrate_watch_above,
@@ -145,6 +147,7 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
                 max_attempts=profile.max_recovery_attempts,
                 cooldown_seconds=profile.recovery_cooldown_seconds,
                 tan_recover_below=profile.tan_recover_below,
+                nh3_recover_below=profile.nh3_recover_below,
                 nitrite_recover_below=profile.nitrite_recover_below,
                 nitrate_recover_below=profile.nitrate_recover_below,
                 ph_recover_low=profile.ph_recover_low,
@@ -179,6 +182,14 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
                 "provenance": profile.provenance,
                 "automatic_water_exchange_enabled": (
                     profile.automatic_water_exchange_enabled
+                ),
+                "unionized_ammonia_thresholds_configured": any(
+                    value is not None
+                    for value in (
+                        profile.nh3_watch_above,
+                        profile.nh3_emergency_above,
+                        profile.nh3_recover_below,
+                    )
                 ),
                 "automatic_chemical_dosing_authorized": False,
             },
@@ -295,6 +306,8 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
                 self.policy,
                 tan_watch_above=profile.tan_watch_above,
                 tan_emergency_above=profile.tan_emergency_above,
+                nh3_watch_above=profile.nh3_watch_above,
+                nh3_emergency_above=profile.nh3_emergency_above,
                 nitrite_watch_above=profile.nitrite_watch_above,
                 nitrite_emergency_above=profile.nitrite_emergency_above,
                 nitrate_watch_above=profile.nitrate_watch_above,
@@ -309,6 +322,7 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
                 max_attempts=profile.max_recovery_attempts,
                 cooldown_seconds=profile.recovery_cooldown_seconds,
                 tan_recover_below=profile.tan_recover_below,
+                nh3_recover_below=profile.nh3_recover_below,
                 nitrite_recover_below=profile.nitrite_recover_below,
                 nitrate_recover_below=profile.nitrate_recover_below,
                 ph_recover_low=profile.ph_recover_low,
@@ -353,7 +367,8 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
             self.water_quality_threshold_snapshot()
         )
         publication = super().publish(snapshot, after_sequence=after_sequence)
-        publication["water_quality_recovery_schema_version"] = 1
+        publication["water_quality_recovery_schema_version"] = 2
+        publication["derived_ammonia_schema_version"] = 1
         publication["koi_stock_feeding_schema_version"] = 1
         publication["automatic_chemical_dosing_authorized"] = False
         return publication
