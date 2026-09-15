@@ -32,6 +32,10 @@ from smart_koi_pond.dashboard.integrated_virtual_pond_ui import (
 from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
 from smart_koi_pond.dashboard.reference_profile_ui import REFERENCE_PROFILE_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
+from smart_koi_pond.dashboard.sidebar_navigation_ui import (
+    SIDEBAR_NAVIGATION_SCRIPT,
+    SIDEBAR_NAVIGATION_STYLE,
+)
 from smart_koi_pond.dashboard.source_water_ui import SOURCE_WATER_UI_SCRIPT
 from smart_koi_pond.dashboard.trend_event_ui import (
     TREND_EVENT_SCRIPT,
@@ -53,7 +57,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{TREND_EVENT_STYLE}"
         f"{INCIDENT_RECOVERY_STORY_STYLE}"
         f"{FILTRATION_BACKWASH_CAUSALITY_STYLE}"
-        f"{VIRTUAL_POND_HOME_STYLE}</head>"
+        f"{VIRTUAL_POND_HOME_STYLE}"
+        f"{SIDEBAR_NAVIGATION_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -70,7 +75,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{TREND_EVENT_SCRIPT}</script>"
         f"<script>{INCIDENT_RECOVERY_STORY_SCRIPT}</script>"
         f"<script>{FILTRATION_BACKWASH_CAUSALITY_SCRIPT}</script>"
-        f"<script>{VIRTUAL_POND_HOME_SCRIPT}</script></body>"
+        f"<script>{VIRTUAL_POND_HOME_SCRIPT}</script>"
+        f"<script>{SIDEBAR_NAVIGATION_SCRIPT}</script></body>"
     ),
 )
 
