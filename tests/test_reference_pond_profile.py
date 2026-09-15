@@ -126,6 +126,10 @@ def test_reference_profile_browser_surface_is_explicit_not_site_measurement() ->
     assert "USER_CONFIGURED" in COMPOSED_INDEX_HTML
     assert "reference_profile_id" in COMPOSED_INDEX_HTML
     assert "overridden_fields" in COMPOSED_INDEX_HTML
+    assert "findPondActions" in COMPOSED_INDEX_HTML
+    assert "ivpPondProfileFeedback" in COMPOSED_INDEX_HTML
+    assert "PROFILE APPLIED ✓" in COMPOSED_INDEX_HTML
+    assert "const actions=form.nextElementSibling" not in COMPOSED_INDEX_HTML
 
 
 def test_legacy_integrated_startup_still_does_not_claim_reference_as_site_fact() -> None:

@@ -39,6 +39,26 @@ REFERENCE_PROFILE_UI_SCRIPT = f"""
     return Math.abs(Number(a)-Number(b))<1e-9;
   }}
   function referenceMainRoute(){{return REFERENCE_PROFILE.routes[0]}}
+  function findPondActions(form){{
+    const parent=form?.parentElement;
+    if(!parent)return null;
+    return Array.from(parent.children).find((node)=>node.classList?.contains('ivp-actions'))||null;
+  }}
+  function setPondFeedback(message,ok=true){{
+    const form=byId('ivpVolume')?.closest('.ivp-form');
+    if(!form)return;
+    const actions=findPondActions(form);
+    let node=byId('ivpPondProfileFeedback');
+    if(!node){{
+      node=document.createElement('div');
+      node.id='ivpPondProfileFeedback';
+      node.className='ivp-input-note';
+      if(actions)actions.insertAdjacentElement('afterend',node);
+      else form.insertAdjacentElement('afterend',node);
+    }}
+    node.style.borderLeftColor=ok?'#2f7656':'#a83f49';
+    node.textContent=message;
+  }}
   function populateReferenceFields(){{
     setValue('ivpProfileId',REFERENCE_PROFILE.profile_id);
     setValue('ivpProfileRevision',REFERENCE_PROFILE.revision);
@@ -56,41 +76,56 @@ REFERENCE_PROFILE_UI_SCRIPT = f"""
   }}
   function installReferenceProfileControls(){{
     const integrated=byId('integrated');
-    if(!integrated||byId('ivpReferenceProfilePanel'))return;
+    if(!integrated)return;
     const form=byId('ivpVolume')?.closest('.ivp-form');
     if(!form)return;
     const volumeField=byId('ivpVolume')?.closest('.ivp-field');
-    const lengthField=document.createElement('div');
-    lengthField.className='ivp-field';
-    lengthField.innerHTML='<label>Length (m)</label><input id="ivpLength" type="number" min="0.01" step="0.01">';
-    const widthField=document.createElement('div');
-    widthField.className='ivp-field';
-    widthField.innerHTML='<label>Width (m)</label><input id="ivpWidth" type="number" min="0.01" step="0.01">';
-    const depthField=document.createElement('div');
-    depthField.className='ivp-field';
-    depthField.innerHTML='<label>Water depth (m)</label><input id="ivpDepth" type="number" min="0.01" step="0.01">';
-    form.insertBefore(lengthField,volumeField);
-    form.insertBefore(widthField,volumeField);
-    form.insertBefore(depthField,volumeField);
+    if(!byId('ivpLength')){{
+      const lengthField=document.createElement('div');
+      lengthField.className='ivp-field';
+      lengthField.innerHTML='<label>Length (m)</label><input id="ivpLength" type="number" min="0.01" step="0.01">';
+      form.insertBefore(lengthField,volumeField);
+    }}
+    if(!byId('ivpWidth')){{
+      const widthField=document.createElement('div');
+      widthField.className='ivp-field';
+      widthField.innerHTML='<label>Width (m)</label><input id="ivpWidth" type="number" min="0.01" step="0.01">';
+      form.insertBefore(widthField,volumeField);
+    }}
+    if(!byId('ivpDepth')){{
+      const depthField=document.createElement('div');
+      depthField.className='ivp-field';
+      depthField.innerHTML='<label>Water depth (m)</label><input id="ivpDepth" type="number" min="0.01" step="0.01">';
+      form.insertBefore(depthField,volumeField);
+    }}
 
-    const panel=document.createElement('div');
-    panel.id='ivpReferenceProfilePanel';
-    panel.className='ivp-input-note';
-    panel.innerHTML='<b>Reference Standard Metric V1 available.</b> 4.0 m × 2.0 m × 1.5 m = 12,000 L nominal, turnover guidance 1.0×/hour. This is an expert-reference product baseline, <b>not a measurement of your pond</b>. Change any field for another pond; dependent requirements recalculate and the override remains visible.';
-    form.parentNode.insertBefore(panel,form);
+    if(!byId('ivpReferenceProfilePanel')){{
+      const panel=document.createElement('div');
+      panel.id='ivpReferenceProfilePanel';
+      panel.className='ivp-input-note';
+      panel.innerHTML='<b>Reference Standard Metric V1 available.</b> 4.0 m × 2.0 m × 1.5 m = 12,000 L nominal, turnover guidance 1.0×/hour. This is an expert-reference product baseline, <b>not a measurement of your pond</b>. Change any field for another pond; dependent requirements recalculate and the override remains visible.';
+      form.parentNode.insertBefore(panel,form);
+    }}
 
-    const actions=form.nextElementSibling;
-    if(actions?.classList.contains('ivp-actions')){{
-      const useReference=document.createElement('button');
-      useReference.className='btn ok';
-      useReference.textContent='Use Reference Standard Metric V1';
-      useReference.onclick=window.ivpUseReferenceProfile;
-      actions.insertBefore(useReference,actions.firstChild);
-      const calc=document.createElement('button');
-      calc.className='btn';
-      calc.textContent='Calculate Nominal Volume from Geometry';
-      calc.onclick=window.ivpCalculateNominalVolume;
-      actions.insertBefore(calc,useReference.nextSibling);
+    const actions=findPondActions(form);
+    if(actions){{
+      if(!byId('ivpUseReferenceButton')){{
+        const useReference=document.createElement('button');
+        useReference.id='ivpUseReferenceButton';
+        useReference.className='btn ok';
+        useReference.textContent='Use Reference Standard Metric V1';
+        useReference.onclick=window.ivpUseReferenceProfile;
+        actions.insertBefore(useReference,actions.firstChild);
+      }}
+      if(!byId('ivpCalculateVolumeButton')){{
+        const calc=document.createElement('button');
+        calc.id='ivpCalculateVolumeButton';
+        calc.className='btn';
+        calc.textContent='Calculate Nominal Volume from Geometry';
+        calc.onclick=window.ivpCalculateNominalVolume;
+        const useReference=byId('ivpUseReferenceButton');
+        actions.insertBefore(calc,useReference?.nextSibling||actions.firstChild);
+      }}
     }}
     const mainLabel=byId('ivpMainFlow')?.closest('.ivp-field')?.querySelector('label');
     if(mainLabel)mainLabel.textContent='Main route declared/reference flow (L/min)';
@@ -105,8 +140,14 @@ REFERENCE_PROFILE_UI_SCRIPT = f"""
       if(!(length>0&&width>0&&depth>0))throw new Error('length, width and water depth must be positive');
       const litres=length*width*depth*1000;
       setValue('ivpVolume',litres.toFixed(1));
-      text('commandResult',`Nominal geometric volume = ${{litres.toFixed(1)}} L. Effective operating volume may still be edited separately.`);
-    }}catch(error){{text('commandResult',`geometry: ${{error.message}}`)}}
+      const message=`Nominal geometric volume = ${{litres.toFixed(1)}} L. Effective operating volume may still be edited separately.`;
+      text('commandResult',message);
+      setPondFeedback(message,true);
+    }}catch(error){{
+      const message=`geometry: ${{error.message}}`;
+      text('commandResult',message);
+      setPondFeedback(message,false);
+    }}
   }};
 
   window.ivpUseReferenceProfile=async function(){{
@@ -115,8 +156,14 @@ REFERENCE_PROFILE_UI_SCRIPT = f"""
       await command('configure_design_profile',{{profile:REFERENCE_PROFILE,actor:'owner-ui-reference-profile'}});
       await command('configure_module',{{module_id:'flow_monitoring',enabled:true,actor:'owner-ui-reference-profile'}});
       await command('configure_module',{{module_id:'backup_circulation',enabled:false,actor:'owner-ui-reference-profile'}});
-      text('commandResult','REFERENCE_STANDARD_METRIC_V1 active · 12,000 L · 1.0×/hour · EXPERT_REFERENCE_PROFILE · NOT SITE MEASUREMENT');
-    }}catch(error){{text('commandResult',`reference profile: ${{error.message}}`)}}
+      const message='PROFILE APPLIED ✓ · REFERENCE_STANDARD_METRIC_V1 active · 12,000 L · 1.0×/hour · EXPERT_REFERENCE_PROFILE · NOT SITE MEASUREMENT';
+      text('commandResult',message);
+      setPondFeedback(message,true);
+    }}catch(error){{
+      const message=`PROFILE NOT APPLIED · reference profile: ${{error.message}}`;
+      text('commandResult',message);
+      setPondFeedback(message,false);
+    }}
   }};
 
   window.configureIntegratedPond=async function(){{
@@ -176,10 +223,16 @@ REFERENCE_PROFILE_UI_SCRIPT = f"""
       await command('configure_design_profile',{{profile,actor:'owner-ui'}});
       await command('configure_module',{{module_id:'flow_monitoring',enabled:true,actor:'owner-ui'}});
       await command('configure_module',{{module_id:'backup_circulation',enabled:backup!==null,actor:'owner-ui'}});
-      text('commandResult',custom
-        ? `User pond profile active · reference lineage ${{REFERENCE_PROFILE.profile_id}} · overrides: ${{overridden.join(', ')}}`
-        : `${{REFERENCE_PROFILE.profile_id}} active · expert reference · NOT SITE MEASUREMENT`);
-    }}catch(error){{text('commandResult',`configure_design_profile: ${{error.message}}`)}}
+      const message=custom
+        ? `PROFILE APPLIED ✓ · User pond profile active · reference lineage ${{REFERENCE_PROFILE.profile_id}} · overrides: ${{overridden.join(', ')}}`
+        : `PROFILE APPLIED ✓ · ${{REFERENCE_PROFILE.profile_id}} active · expert reference · NOT SITE MEASUREMENT`;
+      text('commandResult',message);
+      setPondFeedback(message,true);
+    }}catch(error){{
+      const message=`PROFILE NOT APPLIED · configure_design_profile: ${{error.message}}`;
+      text('commandResult',message);
+      setPondFeedback(message,false);
+    }}
   }};
 
   installReferenceProfileControls();
