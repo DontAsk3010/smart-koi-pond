@@ -1,0 +1,19 @@
+name: Ruff Import Diff TEMP
+
+on:
+  push:
+    branches:
+      - koi-stock-water-quality-recovery-v1
+
+jobs:
+  import-diff:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install ruff==0.16.7
+      - name: Show Ruff import autofix diff
+        run: |
+          ruff check --select I --fix --diff src/smart_koi_pond/digital_twin/koi_stock.py tests/test_koi_stock_water_quality_recovery.py || true
