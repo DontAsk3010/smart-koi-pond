@@ -11,6 +11,7 @@ TREND_EVENT_SCRIPT = r"""
   const SERIES={cTemp:'temp',cDo:'do',cPh:'ph',cLevel:'level',cFlow:'flow'};
   const EVENT_TYPES=new Set(['ALARM','COMMAND','VERIFICATION','RECOVERY','STATE_CHANGE','FAULT','MODE','CONFIGURATION']);
   const EVENT_CODE_TOKENS=['ALARM','COMMAND','FAULT','FAIL','RECOVER','VERIFY','VERIFICATION','MODE','BLACKOUT','POWER','RETURN_TO_AUTO','MAINTENANCE','WATER_CHANGE','TOP_UP','DRAIN','BACKWASH','FILTER','PUMP','AERATOR'];
+  let historianLoaded=false;
   function finite(v){return typeof v==='number'&&Number.isFinite(v)}
   function ts(v){const n=Date.parse(v);return Number.isFinite(n)?n:null}
   function pointFromSnapshot(s){const p=s?.pond_truth||{};return{t:s?.timestamp,temp:p.temperature_c,do:p.dissolved_oxygen_mg_l,ph:p.ph,level:p.water_level_pct,flow:p.circulation_flow_l_min}}
@@ -48,7 +49,7 @@ TREND_EVENT_SCRIPT = r"""
     x.fillStyle='#8fa4b8';x.font='11px system-ui';x.fillText(`${lo.toFixed(2)} – ${hi.toFixed(2)}`,8,13);const start=new Date(bounds.lo).toISOString().replace('T',' ').slice(0,19),end=new Date(bounds.hi).toISOString().replace('T',' ').slice(0,19);x.fillText(start,8,h-5);const ew=x.measureText(end).width;x.fillText(end,Math.max(8,w-ew-8),h-5);
   }
   function renderMarkerTable(){
-    install();const markers=visibleEvents();const bounds=timelineBounds();const source=document.getElementById('trendSource'),count=document.getElementById('trendPointCount'),markerCount=document.getElementById('trendMarkerCount'),windowNode=document.getElementById('trendWindow');if(source)source.textContent=history.length?'HISTORIAN + LIVE':'UNAVAILABLE';if(count)count.textContent=String(history.length);if(markerCount)markerCount.textContent=String(markers.length);if(windowNode)windowNode.textContent=bounds?`${new Date(bounds.lo).toISOString()} → ${new Date(bounds.hi).toISOString()}`:'NO TIMELINE';
+    install();const markers=visibleEvents();const bounds=timelineBounds();const source=document.getElementById('trendSource'),count=document.getElementById('trendPointCount'),markerCount=document.getElementById('trendMarkerCount'),windowNode=document.getElementById('trendWindow');if(source)source.textContent=historianLoaded?'HISTORIAN + LIVE':(history.length?'LIVE BUFFER ONLY':'UNAVAILABLE');if(count)count.textContent=String(history.length);if(markerCount)markerCount.textContent=String(markers.length);if(windowNode)windowNode.textContent=bounds?`${new Date(bounds.lo).toISOString()} → ${new Date(bounds.hi).toISOString()}`:'NO TIMELINE';
     const box=document.getElementById('trendEventTable');if(!box)return;if(!markers.length){box.innerHTML='<div class="muted">No matching loaded operational event markers inside the current trend window.</div>';return}
     const rows=markers.slice(-20).reverse().map(ev=>`<tr><td>${escapeHtml(ev.timestamp)}</td><td>${escapeHtml(ev.event_type)}</td><td>${escapeHtml(ev.code)}</td><td>${escapeHtml(JSON.stringify(ev.payload||{}))}</td></tr>`).join('');box.innerHTML=`<table><thead><tr><th>Time</th><th>Type</th><th>Marker</th><th>Evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
@@ -57,7 +58,7 @@ TREND_EVENT_SCRIPT = r"""
   window.pushHistory=function(s){if(playbackMode)return;upsertPoint(pointFromSnapshot(s));window.drawAll()};
   const baseRenderEvents=window.renderEvents;window.renderEvents=function(){if(typeof baseRenderEvents==='function')baseRenderEvents();window.drawAll()};
   const baseRenderSnapshot=window.renderSnapshot;window.renderSnapshot=function(snapshot,options){baseRenderSnapshot(snapshot,options);window.drawAll()};
-  window.loadHistory=async function(){try{const r=await fetch('/api/history?limit=300',{cache:'no-store'}),j=await r.json();if(!r.ok)throw new Error(j.error||'history failed');const frames=j.frames||[];history.length=0;frames.forEach(f=>upsertPoint(pointFromSnapshot(f.snapshot)));const select=document.getElementById('historyFrames');select.innerHTML='';[...frames].reverse().forEach(f=>{const o=document.createElement('option');o.value=f.frame_sequence;o.textContent=`#${f.frame_sequence} · ${f.timestamp} · event #${f.event_sequence}`;select.appendChild(o)});text('playbackStatus',`${frames.length} historian frames loaded`);window.drawAll()}catch(e){text('playbackStatus',e.message)}};
+  window.loadHistory=async function(){try{const r=await fetch('/api/history?limit=300',{cache:'no-store'}),j=await r.json();if(!r.ok)throw new Error(j.error||'history failed');const frames=j.frames||[];history.length=0;frames.forEach(f=>upsertPoint(pointFromSnapshot(f.snapshot)));historianLoaded=true;const select=document.getElementById('historyFrames');select.innerHTML='';[...frames].reverse().forEach(f=>{const o=document.createElement('option');o.value=f.frame_sequence;o.textContent=`#${f.frame_sequence} · ${f.timestamp} · event #${f.event_sequence}`;select.appendChild(o)});text('playbackStatus',`${frames.length} historian frames loaded`);window.drawAll()}catch(e){historianLoaded=false;text('playbackStatus',e.message);window.drawAll()}};
   install();window.loadHistory();window.drawAll();
 })();
 """
