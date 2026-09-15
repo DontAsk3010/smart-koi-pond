@@ -2,7 +2,9 @@ import os
 from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
-from smart_koi_pond.dashboard.service import RuntimeApplicationService
+from smart_koi_pond.dashboard.source_water_service import (
+    SourceWaterQualifiedRuntimeApplicationService,
+)
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
@@ -146,7 +148,7 @@ def main() -> None:
         "runtime-data/historian.jsonl",
     )
     runtime = build_integrated_virtual_runtime(historian_path=historian_path)
-    service = RuntimeApplicationService(runtime)
+    service = SourceWaterQualifiedRuntimeApplicationService(runtime)
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
     print(
