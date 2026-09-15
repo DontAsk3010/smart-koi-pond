@@ -2,17 +2,18 @@ import os
 from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
+from smart_koi_pond.control.water_quality import WaterQualityRecoveryPolicy
 from smart_koi_pond.dashboard.source_water_service import (
     SourceWaterQualifiedRuntimeApplicationService,
 )
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
+from smart_koi_pond.digital_twin.koi_stock_model import KoiStockWaterExchangePondModel
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
-from smart_koi_pond.digital_twin.source_water_runtime import (
-    SourceWaterQualifiedProductionRuntime,
+from smart_koi_pond.digital_twin.water_quality_runtime import (
+    WaterQualityRegulatingProductionRuntime,
 )
-from smart_koi_pond.digital_twin.water_exchange import WaterExchangePondModel
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import PondState
 
@@ -23,11 +24,11 @@ def build_integrated_virtual_runtime(
 ) -> DigitalTwinRuntime:
     """Build the production-lineage Integrated Virtual Pond runtime.
 
-    The base water values below are simulation initial-state values only. They are not
-    pond measurements, hardware sizing facts, biological engineering references, or
-    production setpoints. Pond/hydraulic, biological, mechanical-filtration and
-    source-water profiles remain explicitly unconfigured until supplied through
-    governed configuration paths.
+    The base water values and thresholds below are simulation policy/initial-state
+    values only. They are not pond measurements, hardware sizing facts, biological
+    engineering references, or final production setpoints. Pond/hydraulic,
+    koi-stock/feeding, biological, mechanical-filtration and source-water profiles
+    remain explicitly unconfigured until supplied through governed configuration.
     """
     policy = SimulationControlPolicy(
         do_watch_below=5.0,
@@ -49,8 +50,19 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    runtime = SourceWaterQualifiedProductionRuntime(
-        WaterExchangePondModel(
+    water_quality_recovery = WaterQualityRecoveryPolicy(
+        enabled=True,
+        exchange_fraction_pct=10.0,
+        max_attempts=2,
+        cooldown_seconds=1800.0,
+        tan_recover_below=0.3,
+        nitrite_recover_below=0.3,
+        nitrate_recover_below=15.0,
+        ph_recover_low=6.9,
+        ph_recover_high=8.1,
+    )
+    runtime = WaterQualityRegulatingProductionRuntime(
+        KoiStockWaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
                 dissolved_oxygen_mg_l=6.0,
@@ -63,6 +75,7 @@ def build_integrated_virtual_runtime(
             ),
         ),
         policy,
+        water_quality_recovery_policy=water_quality_recovery,
         clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
         config_version="integrated-virtual-pond-v1-input-required",
         historian_path=historian_path,
@@ -79,14 +92,18 @@ def build_integrated_virtual_runtime(
             "execution_mode": "SIMULATION",
             "real_device_control": False,
             "pond_profile": "INPUT_REQUIRED",
+            "koi_stock_profile": "INPUT_REQUIRED",
+            "feeding_policy": "INPUT_REQUIRED",
             "biological_profile": "INPUT_REQUIRED",
             "mechanical_filtration_profile": "INPUT_REQUIRED",
             "source_water_profile": "INPUT_REQUIRED",
             "source_water_qualification": "INPUT_REQUIRED",
+            "automatic_water_quality_recovery": "ENABLED_BUT_FAIL_CLOSED_UNTIL_DEPENDENCIES_CONFIGURED",
             "automatic_chemical_dosing_authorized": False,
             "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
             "simulation_initial_state_is_physical_measurement": False,
+            "simulation_water_quality_thresholds_are_production_setpoints": False,
             "hidden_engineering_defaults": False,
             "governed_reconfiguration": True,
             "bounded_self_recovery": True,
@@ -152,7 +169,7 @@ def main() -> None:
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
     print(
-        "Pond/hydraulic, biology, filter and source-water facts: "
+        "Pond, koi-stock/feeding, biology, filter and source-water facts: "
         "INPUT REQUIRED until configured"
     )
     print("Source-water pond-use qualification: FAIL-CLOSED / EVIDENCE REQUIRED")
