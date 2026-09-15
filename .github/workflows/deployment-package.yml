@@ -1,0 +1,69 @@
+name: Deployment Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build vendor-neutral container package
+        run: docker build -t smart-koi-pond:ci .
+
+      - name: Start SIMULATION container on runner loopback only
+        run: >-
+          docker run -d
+          --name smart-koi-pond-ci
+          -e SMART_KOI_HOST=0.0.0.0
+          -e SMART_KOI_PORT=8080
+          -e SMART_KOI_HISTORIAN_PATH=/var/lib/smart-koi-pond/historian.jsonl
+          -p 127.0.0.1:18080:8080
+          smart-koi-pond:ci
+
+      - name: Verify canonical deployment health and authority boundary
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          url = "http://127.0.0.1:18080/api/health"
+          payload = None
+          last_error = None
+          for _ in range(30):
+              try:
+                  with urllib.request.urlopen(url, timeout=2) as response:
+                      payload = json.load(response)
+                  break
+              except (OSError, urllib.error.URLError) as exc:
+                  last_error = exc
+                  time.sleep(1)
+
+          if payload is None:
+              raise SystemExit(f"deployment health endpoint unavailable: {last_error}")
+
+          assert payload["status"] == "ok", payload
+          assert payload["execution_mode"] == "SIMULATION", payload
+          assert payload["run_id"], payload
+          print(json.dumps(payload, sort_keys=True))
+          PY
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs smart-koi-pond-ci || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f smart-koi-pond-ci || true
