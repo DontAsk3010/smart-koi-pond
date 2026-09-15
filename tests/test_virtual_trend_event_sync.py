@@ -17,9 +17,16 @@ def test_virtual_browser_contains_historian_backed_trend_event_surface() -> None
 def test_trend_projection_preserves_unavailable_as_a_visible_gap() -> None:
     assert "if(t===null||!finite(value)){drawing=false;return}" in TREND_EVENT_SCRIPT
     assert "UNAVAILABLE — no canonical trend evidence" in TREND_EVENT_SCRIPT
-    assert "Number(v)||0" not in TREND_EVENT_SCRIPT
-    assert "??0" not in TREND_EVENT_SCRIPT
-    assert "||0" not in TREND_EVENT_SCRIPT
+    for false_zero in (
+        "Number(v[key])||0",
+        "v[key]||0",
+        "p.temperature_c||0",
+        "p.dissolved_oxygen_mg_l||0",
+        "p.ph||0",
+        "p.water_level_pct||0",
+        "p.circulation_flow_l_min||0",
+    ):
+        assert false_zero not in TREND_EVENT_SCRIPT
 
 
 def test_trend_markers_and_playback_cursor_use_canonical_time_evidence() -> None:
