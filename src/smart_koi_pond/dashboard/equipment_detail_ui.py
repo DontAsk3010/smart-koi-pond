@@ -53,8 +53,13 @@ EQUIPMENT_DETAIL_SCRIPT = r"""
   }
   function cell(id,kind,html){const n=document.getElementById(id);if(!n)return;n.className=`eqd-cell ${kind||''}`;const d=n.querySelector('.eqd-detail');if(d)d.innerHTML=html}
   function assetKind(asset,feedback,verification){
-    const availability=String(asset?.availability||feedback?.availability||'UNKNOWN');const failed=availability==='FAILED'||availability==='OFFLINE'||availability==='UNAVAILABLE'||verification.some(v=>v.status==='FAILED_RESPONSE');if(failed)return'bad';
-    const degraded=availability==='DEGRADED'||availability==='PLANNED_OFF'||availability==='MAINTENANCE_UNAVAILABLE'||verification.some(v=>v.status==='INSUFFICIENT_EVIDENCE');return degraded?'warn':'good';
+    const availability=String(asset?.availability||feedback?.availability||'UNKNOWN');
+    const failedAvailability=new Set(['FAILED','UNAVAILABLE','UNKNOWN','STALE']);
+    const plannedAvailability=new Set(['UNSUPPORTED','PLANNED_OFF','MAINTENANCE_UNAVAILABLE','CALIBRATION']);
+    if(failedAvailability.has(availability)||verification.some(v=>v.status==='FAILED_RESPONSE'))return'bad';
+    if(plannedAvailability.has(availability)||verification.some(v=>v.status==='INSUFFICIENT_EVIDENCE'))return'warn';
+    if(['AVAILABLE','STANDBY','MANUAL'].includes(availability))return'good';
+    return'warn';
   }
   function render(s){
     install();decorate();if(!selectedAssetId||!s)return;
@@ -63,11 +68,11 @@ EQUIPMENT_DETAIL_SCRIPT = r"""
     const kind=assetKind(asset,feedback,verification);
     cell('eqdAsset',kind,asset?`owner <b>${safe(asset.owner)}</b><br>availability ${safe(asset.availability)}<br>feedback ON ${bool(asset.feedback_on)} · effectiveness ${percent(asset.effectiveness)}`:'ASSET STATE UNAVAILABLE IN SNAPSHOT');
     cell('eqdCommand',command?(command.accepted?'good':'warn'):'',command?`requested ${bool(command.requested_on)} → final ${bool(command.final_on)}<br>owner ${safe(command.owner)} · accepted ${bool(command.accepted)}<br>reason ${safe(command.reason)}`:'NO CURRENT COMMAND PUBLISHED FOR THIS SNAPSHOT');
-    cell('eqdFeedback',feedback?(feedback.availability==='FAILED'?'bad':''):'',feedback?`commanded ${bool(feedback.commanded_on)} · feedback ${bool(feedback.feedback_on)}<br>availability ${safe(feedback.availability)} · effect ${percent(feedback.effectiveness)}<br>feedback time ${safe(feedback.timestamp)}`:'DEVICE FEEDBACK UNAVAILABLE');
+    cell('eqdFeedback',kind,feedback?`commanded ${bool(feedback.commanded_on)} · feedback ${bool(feedback.feedback_on)}<br>availability ${safe(feedback.availability)} · effect ${percent(feedback.effectiveness)}<br>feedback time ${safe(feedback.timestamp)}`:'DEVICE FEEDBACK UNAVAILABLE');
     const verificationHtml=verification.length?verification.slice(-4).reverse().map(v=>`${safe(v.status)} · ${safe(v.parameter)}<br><span class="muted">baseline ${safe(v.baseline)} · observed ${safe(v.observed_value)} · due ${safe(v.due_at)}</span>`).join('<br>'):'NO VERIFICATION TASK PUBLISHED FOR THIS ASSET/SNAPSHOT';
     cell('eqdVerification',verification.some(v=>v.status==='FAILED_RESPONSE')?'bad':(verification.some(v=>v.status==='PENDING')?'warn':''),verificationHtml);
     const moduleHtml=modules.length?modules.map(([mid,m])=>`${safe(mid)} · ${safe(m.operational_state)}<br><span class="muted">capabilities ${(m.capabilities_provided||[]).map(safe).join(', ')||'UNAVAILABLE'}${(m.reasons||[]).length?` · reasons ${(m.reasons||[]).map(safe).join(', ')}`:''}</span>`).join('<br>'):'NO MODULE/DEPENDENCY MAPPING PUBLISHED FOR THIS ASSET';
-    cell('eqdDependencies',modules.some(([,m])=>!['AVAILABLE','ACTIVE','READY'].includes(String(m.operational_state)))?'warn':'',moduleHtml);
+    cell('eqdDependencies',modules.some(([,m])=>m.operational_state!=='AVAILABLE')?'warn':'',moduleHtml);
     const scoped=Array.isArray(operating.scope)&&operating.scope.includes(id);cell('eqdOperating',scoped?'warn':'',`mode ${safe(s.operating_mode)} · phase ${safe(operating.phase)}<br>asset in declared operating scope ${bool(scoped)}<br>reason ${safe(operating.reason)}`);
     cell('eqdAuthority','',`source ${safe(feedback?.source_state||asset?.source_state)}<br>authority ${safe(feedback?.authority_state||asset?.authority_state)}<br>adapter ${safe(feedback?.adapter_id||asset?.adapter_id)} · device ${safe(feedback?.device_id||asset?.device_id)}`);
     const diagnostic=[];if(command)diagnostic.push(`command ${command.accepted?'accepted':'inhibited'}: ${command.reason}`);if(feedback&&command&&command.final_on!==feedback.feedback_on)diagnostic.push('COMMAND / FEEDBACK MISMATCH');verification.forEach(v=>diagnostic.push(`verification ${v.status}: ${v.parameter}`));modules.forEach(([,m])=>(m.reasons||[]).forEach(r=>diagnostic.push(`dependency ${r}`)));cell('eqdEvidence',diagnostic.some(x=>x.includes('FAILED')||x.includes('MISMATCH'))?'bad':'',diagnostic.length?diagnostic.map(safe).join('<br>'):'NO ADDITIONAL DIAGNOSTIC EVIDENCE IN CURRENT SNAPSHOT');
