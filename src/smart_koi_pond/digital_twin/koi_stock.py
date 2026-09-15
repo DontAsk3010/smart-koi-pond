@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from smart_koi_pond.digital_twin.hydraulics import EngineeringProvenance
+from .hydraulics import EngineeringProvenance
 
 
 INDONESIA_JUVENILE_KOI_ESTIMATOR_ID = "INDONESIA_KOI_LENGTH_WEIGHT_2026_V1"
@@ -54,7 +54,11 @@ class LengthWeightEstimator:
             max_length_cm=float(data["max_length_cm"]),
             intercept_g=float(data["intercept_g"]),
             slope_g_per_cm=float(data["slope_g_per_cm"]),
-            r_squared=(float(data["r_squared"]) if data.get("r_squared") is not None else None),
+            r_squared=(
+                float(data["r_squared"])
+                if data.get("r_squared") is not None
+                else None
+            ),
             standard_error_g=(
                 float(data["standard_error_g"])
                 if data.get("standard_error_g") is not None
@@ -101,7 +105,10 @@ class KoiStockGroup:
             raise ValueError("average_weight_g must be positive")
         if self.average_length_cm is None and self.average_weight_g is None:
             raise ValueError("average_length_cm or average_weight_g is required")
-        if self.average_weight_g is not None and self.weight_provenance == EngineeringProvenance.UNAVAILABLE:
+        if (
+            self.average_weight_g is not None
+            and self.weight_provenance == EngineeringProvenance.UNAVAILABLE
+        ):
             raise ValueError("entered weight cannot use UNAVAILABLE provenance")
 
     def to_dict(self) -> dict[str, Any]:
@@ -325,7 +332,9 @@ class FeedingPolicy:
             "body_weight_fraction_per_day": self.body_weight_fraction_per_day,
             "planned_feed_kg_per_day": feed_kg_per_day,
             "meals_per_day": self.meals_per_day,
-            "planned_feed_per_meal_g": feed_kg_per_day * 1000.0 / self.meals_per_day,
+            "planned_feed_per_meal_g": (
+                feed_kg_per_day * 1000.0 / self.meals_per_day
+            ),
             "groups_considered": len(groups),
         }
 
@@ -382,17 +391,23 @@ class FeedingPolicy:
         )
 
 
-def juvenile_koi_feeding_reference_2025_v1(*, rate_fraction: float = 0.035) -> FeedingPolicy:
+def juvenile_koi_feeding_reference_2025_v1(
+    *, rate_fraction: float = 0.035
+) -> FeedingPolicy:
     """Bounded reference midpoint from a 3-4% BW/day juvenile-koi study.
 
     It is intentionally not a universal/adult-koi production default.
     """
     if not 0.03 <= rate_fraction <= 0.04:
-        raise ValueError("reference rate must remain within the published 3-4% BW/day range")
+        raise ValueError(
+            "reference rate must remain within the published 3-4% BW/day range"
+        )
     return FeedingPolicy(
         policy_id=JUVENILE_KOI_FEEDING_REFERENCE_ID,
         revision="1",
-        source_reference="DOI:10.3390/fishes10040181; 3-4% BW/day juvenile koi reference",
+        source_reference=(
+            "DOI:10.3390/fishes10040181; 3-4% BW/day juvenile koi reference"
+        ),
         body_weight_fraction_per_day=rate_fraction,
         meals_per_day=3,
         min_average_weight_g=5.0,
