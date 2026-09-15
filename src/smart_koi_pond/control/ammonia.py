@@ -38,7 +38,7 @@ class UnionizedAmmoniaResult:
     provenance: str = "CALCULATED"
     basis: str = "VALIDATED_TAN_N_PLUS_PH_PLUS_TEMPERATURE"
 
-    def to_dict(self) -> dict[str, float | str]:
+    def to_dict(self) -> dict[str, float | str | bool]:
         return {
             "tan_n_mg_l": self.tan_n_mg_l,
             "ph": self.ph,
@@ -52,6 +52,7 @@ class UnionizedAmmoniaResult:
             "provenance": self.provenance,
             "basis": self.basis,
             "threshold_comparison_basis": "MOLECULAR_NH3_MG_L",
+            "fabricated": False,
         }
 
 
