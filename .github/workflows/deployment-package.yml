@@ -25,10 +25,14 @@ jobs:
         run: >-
           docker run -d
           --name smart-koi-pond-ci
+          --health-interval=1s
+          --health-timeout=2s
+          --health-start-period=1s
+          --health-retries=5
           -e SMART_KOI_HOST=0.0.0.0
-          -e SMART_KOI_PORT=8080
+          -e SMART_KOI_PORT=18081
           -e SMART_KOI_HISTORIAN_PATH=/var/lib/smart-koi-pond/historian.jsonl
-          -p 127.0.0.1:18080:8080
+          -p 127.0.0.1:18080:18081
           smart-koi-pond:ci
 
       - name: Verify canonical deployment health and authority boundary
@@ -67,6 +71,23 @@ jobs:
 
           print(json.dumps(payload, sort_keys=True))
           PY
+
+      - name: Verify image healthcheck follows SMART_KOI_PORT
+        run: |
+          for _ in $(seq 1 20); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' smart-koi-pond-ci)"
+            if [ "$status" = "healthy" ]; then
+              echo "container health=$status"
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              docker inspect --format '{{json .State.Health}}' smart-koi-pond-ci
+              exit 1
+            fi
+            sleep 1
+          done
+          docker inspect --format '{{json .State.Health}}' smart-koi-pond-ci
+          exit 1
 
       - name: Show container logs on failure
         if: failure()
