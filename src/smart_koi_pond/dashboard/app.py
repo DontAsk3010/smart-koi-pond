@@ -3,9 +3,7 @@ from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
 from smart_koi_pond.control.water_quality import WaterQualityRecoveryPolicy
-from smart_koi_pond.dashboard.source_water_service import (
-    SourceWaterQualifiedRuntimeApplicationService,
-)
+from smart_koi_pond.dashboard.koi_stock_service import KoiStockRuntimeApplicationService
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.koi_stock_model import KoiStockWaterExchangePondModel
@@ -98,7 +96,9 @@ def build_integrated_virtual_runtime(
             "mechanical_filtration_profile": "INPUT_REQUIRED",
             "source_water_profile": "INPUT_REQUIRED",
             "source_water_qualification": "INPUT_REQUIRED",
-            "automatic_water_quality_recovery": "ENABLED_BUT_FAIL_CLOSED_UNTIL_DEPENDENCIES_CONFIGURED",
+            "automatic_water_quality_recovery": (
+                "ENABLED_BUT_FAIL_CLOSED_UNTIL_DEPENDENCIES_CONFIGURED"
+            ),
             "automatic_chemical_dosing_authorized": False,
             "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
@@ -165,7 +165,7 @@ def main() -> None:
         "runtime-data/historian.jsonl",
     )
     runtime = build_integrated_virtual_runtime(historian_path=historian_path)
-    service = SourceWaterQualifiedRuntimeApplicationService(runtime)
+    service = KoiStockRuntimeApplicationService(runtime)
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
     print(
