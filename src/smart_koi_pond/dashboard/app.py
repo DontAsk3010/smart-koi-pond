@@ -2,12 +2,16 @@ import os
 from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
-from smart_koi_pond.dashboard.service import RuntimeApplicationService
+from smart_koi_pond.dashboard.source_water_service import (
+    SourceWaterQualifiedRuntimeApplicationService,
+)
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
-from smart_koi_pond.digital_twin.governed_runtime import ProductionDigitalTwinRuntime
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
+from smart_koi_pond.digital_twin.source_water_runtime import (
+    SourceWaterQualifiedProductionRuntime,
+)
 from smart_koi_pond.digital_twin.water_exchange import WaterExchangePondModel
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import PondState
@@ -45,7 +49,7 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    runtime = ProductionDigitalTwinRuntime(
+    runtime = SourceWaterQualifiedProductionRuntime(
         WaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
@@ -78,6 +82,8 @@ def build_integrated_virtual_runtime(
             "biological_profile": "INPUT_REQUIRED",
             "mechanical_filtration_profile": "INPUT_REQUIRED",
             "source_water_profile": "INPUT_REQUIRED",
+            "source_water_qualification": "INPUT_REQUIRED",
+            "automatic_chemical_dosing_authorized": False,
             "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
             "backup_circulation": "DISABLED_UNTIL_EXPLICIT_CONFIGURATION",
             "simulation_initial_state_is_physical_measurement": False,
@@ -142,13 +148,15 @@ def main() -> None:
         "runtime-data/historian.jsonl",
     )
     runtime = build_integrated_virtual_runtime(historian_path=historian_path)
-    service = RuntimeApplicationService(runtime)
+    service = SourceWaterQualifiedRuntimeApplicationService(runtime)
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
     print(
         "Pond/hydraulic, biology, filter and source-water facts: "
         "INPUT REQUIRED until configured"
     )
+    print("Source-water pond-use qualification: FAIL-CLOSED / EVIDENCE REQUIRED")
+    print("Automatic chemical dosing authority: DISABLED")
     print("Governed reconfiguration / rollback / bounded self-recovery: ENABLED")
     print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)

@@ -4,7 +4,11 @@ import pytest
 
 from smart_koi_pond.dashboard.app import build_integrated_virtual_runtime
 from smart_koi_pond.digital_twin.hydraulics import HydraulicRouteSpec, PondDesignProfile
-from smart_koi_pond.digital_twin.water_exchange import SourceWaterProfile, WaterExchangePondModel
+from smart_koi_pond.digital_twin.water_exchange import (
+    SOURCE_WATER_QUALIFICATION_QUALIFIED,
+    SourceWaterProfile,
+    WaterExchangePondModel,
+)
 from smart_koi_pond.domain.enums import OperatingMode
 
 
@@ -39,6 +43,11 @@ def _source(*, nitrate_mg_l: float = 10.0) -> SourceWaterProfile:
         nitrite_mg_l=0.0,
         nitrate_mg_l=nitrate_mg_l,
         alkalinity_mg_l_as_caco3=100.0,
+        free_chlorine_residual_mg_l=0.0,
+        chloramine_residual_mg_l=0.0,
+        pond_use_qualification=SOURCE_WATER_QUALIFICATION_QUALIFIED,
+        qualification_basis="EXPLICIT_TEST_FIXTURE_POST_CONDITIONING_EVIDENCE",
+        qualification_reference="mass-balance-audit-source-qualified-r1",
     )
 
 

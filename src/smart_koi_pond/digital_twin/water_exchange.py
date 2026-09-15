@@ -5,13 +5,28 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from smart_koi_pond.digital_twin.hydraulics import EngineeringProvenance
-from smart_koi_pond.digital_twin.model import PondModel
+from .hydraulics import EngineeringProvenance
+from .model import PondModel
+
+
+SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED = "INPUT_REQUIRED"
+SOURCE_WATER_QUALIFICATION_NOT_QUALIFIED = "NOT_QUALIFIED"
+SOURCE_WATER_QUALIFICATION_QUALIFIED = "QUALIFIED"
+_SOURCE_WATER_QUALIFICATION_STATES = {
+    SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED,
+    SOURCE_WATER_QUALIFICATION_NOT_QUALIFIED,
+    SOURCE_WATER_QUALIFICATION_QUALIFIED,
+}
 
 
 @dataclass(slots=True, frozen=True)
 class SourceWaterProfile:
-    """Explicit source-water evidence used for virtual refill/mixing."""
+    """Explicit source-water evidence used for virtual refill/mixing.
+
+    Disinfectant residuals are evidence about the source water as presented to the
+    pond after any external/manual conditioning. Qualification is explicit; source
+    type never implies safe chemistry.
+    """
 
     profile_id: str
     revision: str
@@ -24,6 +39,13 @@ class SourceWaterProfile:
     nitrite_mg_l: float | None = None
     nitrate_mg_l: float | None = None
     alkalinity_mg_l_as_caco3: float | None = None
+    free_chlorine_residual_mg_l: float | None = None
+    chloramine_residual_mg_l: float | None = None
+    pond_use_qualification: str = SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED
+    qualification_basis: str | None = None
+    qualification_reference: str | None = None
+    conditioning_method: str | None = None
+    conditioning_reference: str | None = None
     provenance: EngineeringProvenance = EngineeringProvenance.USER_CONFIGURED_SCENARIO
 
     def __post_init__(self) -> None:
@@ -41,14 +63,54 @@ class SourceWaterProfile:
             "nitrite_mg_l",
             "nitrate_mg_l",
             "alkalinity_mg_l_as_caco3",
+            "free_chlorine_residual_mg_l",
+            "chloramine_residual_mg_l",
         ):
             value = getattr(self, field_name)
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be non-negative when provided")
         if self.ph is not None and not 0.0 <= self.ph <= 14.0:
             raise ValueError("ph must be between 0 and 14 when provided")
+        qualification = str(self.pond_use_qualification).upper()
+        if qualification not in _SOURCE_WATER_QUALIFICATION_STATES:
+            raise ValueError(
+                "pond_use_qualification must be INPUT_REQUIRED, NOT_QUALIFIED, or QUALIFIED"
+            )
+        object.__setattr__(self, "pond_use_qualification", qualification)
+        if qualification == SOURCE_WATER_QUALIFICATION_QUALIFIED:
+            if not self.qualification_basis:
+                raise ValueError("QUALIFIED source water requires qualification_basis")
+            if not self.qualification_reference:
+                raise ValueError("QUALIFIED source water requires qualification_reference")
+        if self.conditioning_method and not self.conditioning_reference:
+            raise ValueError(
+                "conditioning_reference is required when conditioning_method is provided"
+            )
         if self.provenance == EngineeringProvenance.UNAVAILABLE:
             raise ValueError("configured source-water profile cannot be UNAVAILABLE")
+
+    @property
+    def pond_use_qualified(self) -> bool:
+        return self.pond_use_qualification == SOURCE_WATER_QUALIFICATION_QUALIFIED
+
+    def qualification_snapshot(self) -> dict[str, Any]:
+        if self.pond_use_qualified:
+            reason = "EXPLICIT_GOVERNED_QUALIFICATION_EVIDENCE"
+        elif self.pond_use_qualification == SOURCE_WATER_QUALIFICATION_NOT_QUALIFIED:
+            reason = "SOURCE_WATER_EXPLICITLY_NOT_QUALIFIED"
+        else:
+            reason = "SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED"
+        return {
+            "state": self.pond_use_qualification,
+            "pond_use_qualified": self.pond_use_qualified,
+            "basis": self.qualification_basis,
+            "reference": self.qualification_reference,
+            "conditioning_method": self.conditioning_method,
+            "conditioning_reference": self.conditioning_reference,
+            "reason": reason,
+            "source_type_implies_safe_chemistry": False,
+            "automatic_chemical_dosing_authorized": False,
+        }
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -60,6 +122,13 @@ class SourceWaterProfile:
         def optional_float(name: str) -> float | None:
             value = data.get(name)
             return float(value) if value is not None else None
+
+        def optional_text(name: str) -> str | None:
+            value = data.get(name)
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
 
         return cls(
             profile_id=str(data["profile_id"]),
@@ -77,6 +146,20 @@ class SourceWaterProfile:
             alkalinity_mg_l_as_caco3=optional_float(
                 "alkalinity_mg_l_as_caco3"
             ),
+            free_chlorine_residual_mg_l=optional_float(
+                "free_chlorine_residual_mg_l"
+            ),
+            chloramine_residual_mg_l=optional_float("chloramine_residual_mg_l"),
+            pond_use_qualification=str(
+                data.get(
+                    "pond_use_qualification",
+                    SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED,
+                )
+            ),
+            qualification_basis=optional_text("qualification_basis"),
+            qualification_reference=optional_text("qualification_reference"),
+            conditioning_method=optional_text("conditioning_method"),
+            conditioning_reference=optional_text("conditioning_reference"),
             provenance=EngineeringProvenance.normalize(
                 data.get("provenance", EngineeringProvenance.USER_CONFIGURED_SCENARIO)
             ),
@@ -108,18 +191,44 @@ class WaterExchangePondModel(PondModel):
     def configure_source_water_profile(self, profile: SourceWaterProfile) -> None:
         self.source_water = profile
 
+    def source_water_is_qualified(self) -> bool:
+        return self.source_water is not None and self.source_water.pond_use_qualified
+
+    def source_water_qualification_snapshot(self) -> dict[str, Any]:
+        if self.source_water is None:
+            return {
+                "state": SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED,
+                "pond_use_qualified": False,
+                "basis": None,
+                "reference": None,
+                "conditioning_method": None,
+                "conditioning_reference": None,
+                "reason": "SOURCE_WATER_PROFILE_INPUT_REQUIRED",
+                "source_type_implies_safe_chemistry": False,
+                "automatic_chemical_dosing_authorized": False,
+            }
+        return self.source_water.qualification_snapshot()
+
     def source_water_snapshot(self) -> dict[str, Any]:
+        qualification = self.source_water_qualification_snapshot()
         if self.source_water is None:
             return {
                 "configured": False,
                 "status": "INPUT_REQUIRED",
                 "provenance": EngineeringProvenance.UNAVAILABLE.value,
+                "qualification": qualification,
+                "pond_use_qualified": False,
             }
-        return {"configured": True, **self.source_water.to_dict()}
+        return {
+            "configured": True,
+            **self.source_water.to_dict(),
+            "qualification": qualification,
+            "pond_use_qualified": qualification["pond_use_qualified"],
+        }
 
     def water_exchange_snapshot(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "model": "WELL_MIXED_DISCHARGE_PLUS_SOURCE_WATER_MIXING_V1",
             "source_water": self.source_water_snapshot(),
             "cumulative_discharge_l": self.cumulative_discharge_l,
@@ -131,6 +240,8 @@ class WaterExchangePondModel(PondModel):
             "ph_mixing_model": "BUFFER_WEIGHTED_HYDROGEN_ACTIVITY_SIMPLIFIED_V1",
             "ph_model_is_laboratory_equilibrium": False,
             "unknown_source_values_are_fabricated": False,
+            "source_type_implies_disinfectant_absence": False,
+            "automatic_chemical_dosing_authorized": False,
         }
 
     def hydraulic_snapshot(self) -> dict[str, Any]:
@@ -421,6 +532,7 @@ class WaterExchangePondModel(PondModel):
 
         self.cumulative_discharge_l += discharge_l
         self.cumulative_refill_l += refill_l
+        qualification = self.source_water_qualification_snapshot()
         self._last_exchange = {
             "starting_volume_l": starting_volume_l,
             "discharge_l": discharge_l,
@@ -443,6 +555,7 @@ class WaterExchangePondModel(PondModel):
                 if self.source_water is not None
                 else EngineeringProvenance.UNAVAILABLE.value
             ),
+            "source_water_qualification": qualification,
             "parameter_results": parameter_results,
             "well_mixed_discharge_assumption": True,
         }
