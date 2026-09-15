@@ -28,6 +28,45 @@ INTEGRATED_CONTROL_UI_SCRIPT = r"""
     return body;
   }
 
+  function assetFeedbackText(asset){
+    if(!asset)return 'UNAVAILABLE';
+    if(asset.feedback_on===true)return 'ON';
+    if(asset.feedback_on===false)return 'OFF';
+    return 'UNKNOWN';
+  }
+  function manualOwner(asset){
+    const owner=asset?.owner;
+    return owner==='MANUAL'||owner==='MAINTENANCE';
+  }
+  function setEquipmentFeedback(message,ok=true){
+    const node=byId('ivpEquipmentControlFeedback');
+    if(!node)return;
+    node.style.borderLeftColor=ok?'#2f7656':'#a83f49';
+    node.textContent=message;
+  }
+  function setActiveButton(id,active,enabled){
+    const node=byId(id);
+    if(!node)return;
+    node.disabled=!enabled;
+    node.className=active?'btn ok':'btn';
+    node.setAttribute('aria-pressed',active?'true':'false');
+  }
+  function renderEquipmentControlState(snapshot){
+    if(!snapshot)return;
+    const main=snapshot.assets?.main_pump;
+    const aerator=snapshot.assets?.primary_aerator;
+    const mainManual=manualOwner(main);
+    const aeratorManual=manualOwner(aerator);
+    setActiveButton('ivpMainPumpOnButton',main?.feedback_on===true,mainManual);
+    setActiveButton('ivpMainPumpOffButton',main?.feedback_on===false,mainManual);
+    setActiveButton('ivpAeratorOnButton',aerator?.feedback_on===true,aeratorManual);
+    setActiveButton('ivpAeratorOffButton',aerator?.feedback_on===false,aeratorManual);
+    const status=byId('ivpEquipmentControlStatus');
+    if(status){
+      status.innerHTML=`<b>Actual canonical equipment state</b> · Main Pump: ${assetFeedbackText(main)} / owner ${escapeHtml(main?.owner||'UNKNOWN')} · Aerator: ${assetFeedbackText(aerator)} / owner ${escapeHtml(aerator?.owner||'UNKNOWN')}`;
+    }
+  }
+
   window.configureIntegratedPond=async function(){
     try{
       const backup=finite('ivpBackupFlow');
@@ -80,36 +119,57 @@ INTEGRATED_CONTROL_UI_SCRIPT = r"""
       if(snapshot?.operating_mode&&snapshot.operating_mode!=='NORMAL_AUTO'){
         throw new Error(`operating mode already active: ${snapshot.operating_mode}`);
       }
-      await command('start_manual_maintenance',{
+      const body=await command('start_manual_maintenance',{
         scope:['main_pump','primary_aerator'],
         service_locked:[],
         reason:'INTEGRATED_VIRTUAL_POND_MANUAL_EQUIPMENT_CONTROL'
       });
+      const current=body?.publication?.snapshot;
+      renderEquipmentControlState(current);
+      setEquipmentFeedback('MANUAL CONTROL ACTIVE ✓ · Main Pump and Aerator can now accept ON/OFF commands',true);
       text('commandResult','Manual equipment control acquired for main pump + primary aerator');
-    }catch(error){text('commandResult',`manual ownership: ${error.message}`)}
+    }catch(error){
+      setEquipmentFeedback(`MANUAL CONTROL NOT ACQUIRED · ${error.message}`,false);
+      text('commandResult',`manual ownership: ${error.message}`);
+    }
   };
 
   window.ivpReturnAuto=async function(){
     try{
-      await command('return_to_auto',{},'operator');
+      const body=await command('return_to_auto',{},'operator');
+      const current=body?.publication?.snapshot;
+      renderEquipmentControlState(current);
+      setEquipmentFeedback('RETURN TO AUTO REQUESTED · RECOVERY_SYNC now governs ownership transfer',true);
       text('commandResult','Return-to-AUTO requested; RECOVERY_SYNC governs ownership transfer');
-    }catch(error){text('commandResult',`return_to_auto: ${error.message}`)}
+    }catch(error){
+      setEquipmentFeedback(`RETURN TO AUTO FAILED · ${error.message}`,false);
+      text('commandResult',`return_to_auto: ${error.message}`);
+    }
   };
 
   window.ivpManual=async function(asset,on){
+    const label=asset==='main_pump'?'MAIN PUMP':'AERATOR';
     try{
       const snapshot=(typeof displayed!=='undefined'&&displayed)||(typeof latestLive!=='undefined'&&latestLive);
       const owner=snapshot?.assets?.[asset]?.owner;
       if(owner!=='MANUAL'&&owner!=='MAINTENANCE'){
         throw new Error('Enter Manual Equipment Control first; AUTO ownership cannot be bypassed');
       }
-      await command('manual_command',{
+      const body=await command('manual_command',{
         asset_id:asset,
         on,
         reason:'INTEGRATED_VIRTUAL_POND_UI'
       });
-      text('commandResult',`${asset}: ${on?'ON':'OFF'} manual command accepted`);
-    }catch(error){text('commandResult',`manual_command: ${error.message}`)}
+      const current=body?.publication?.snapshot;
+      renderEquipmentControlState(current);
+      const feedback=current?.assets?.[asset];
+      const actual=assetFeedbackText(feedback);
+      setEquipmentFeedback(`${label} COMMAND ACCEPTED ✓ · requested ${on?'ON':'OFF'} · canonical feedback ${actual}`,true);
+      text('commandResult',`${asset}: ${on?'ON':'OFF'} manual command accepted · feedback ${actual}`);
+    }catch(error){
+      setEquipmentFeedback(`${label} COMMAND REJECTED · ${error.message}`,false);
+      text('commandResult',`manual_command: ${error.message}`);
+    }
   };
 
   window.ivpBackwash=async function(){
@@ -138,20 +198,54 @@ INTEGRATED_CONTROL_UI_SCRIPT = r"""
     const panel=document.createElement('div');
     panel.id='ivpOwnershipControls';
     panel.className='ivp-input-note';
-    panel.innerHTML='<b>Command ownership is explicit.</b> Main Pump / Aerator ON-OFF buttons are blocked while AUTO owns the assets. Enter manual equipment control first; Return to AUTO uses governed recovery synchronization.';
+    panel.innerHTML='<b>Command ownership is explicit.</b> Main Pump / Aerator ON-OFF buttons are disabled while AUTO owns the assets. Enter manual equipment control first; Return to AUTO uses governed recovery synchronization.';
     actions.parentNode.insertBefore(panel,actions);
+
+    const equipmentStatus=document.createElement('div');
+    equipmentStatus.id='ivpEquipmentControlStatus';
+    equipmentStatus.className='ivp-input-note';
+    equipmentStatus.innerHTML='<b>Actual canonical equipment state</b> · waiting for runtime publication';
+    actions.insertAdjacentElement('afterend',equipmentStatus);
+    const equipmentFeedback=document.createElement('div');
+    equipmentFeedback.id='ivpEquipmentControlFeedback';
+    equipmentFeedback.className='ivp-input-note';
+    equipmentFeedback.textContent='Equipment command feedback will appear here.';
+    equipmentStatus.insertAdjacentElement('afterend',equipmentFeedback);
+
+    const existing=Array.from(actions.querySelectorAll('button'));
+    const mainOn=existing.find((node)=>node.textContent.trim()==='Main Pump ON');
+    const mainOff=existing.find((node)=>node.textContent.trim()==='Main Pump OFF');
+    const aeratorOn=existing.find((node)=>node.textContent.trim()==='Aerator ON');
+    const aeratorOff=existing.find((node)=>node.textContent.trim()==='Aerator OFF');
+    if(mainOn)mainOn.id='ivpMainPumpOnButton';
+    if(mainOff)mainOff.id='ivpMainPumpOffButton';
+    if(aeratorOn)aeratorOn.id='ivpAeratorOnButton';
+    if(aeratorOff)aeratorOff.id='ivpAeratorOffButton';
+
     const enter=document.createElement('button');
+    enter.id='ivpEnterManualControlButton';
     enter.className='btn';
     enter.textContent='Enter Manual Equipment Control';
     enter.onclick=window.ivpEnterManualControl;
     const back=document.createElement('button');
+    back.id='ivpReturnAutoButton';
     back.className='btn ok';
     back.textContent='Return to AUTO';
     back.onclick=window.ivpReturnAuto;
     actions.insertBefore(back,actions.firstChild);
     actions.insertBefore(enter,actions.firstChild);
+
+    const current=(typeof displayed!=='undefined'&&displayed)||(typeof latestLive!=='undefined'&&latestLive);
+    renderEquipmentControlState(current);
   }
 
   installOwnershipControls();
+  const baseRender=window.renderSnapshot;
+  if(typeof baseRender==='function'){
+    window.renderSnapshot=function(snapshot,options){
+      baseRender(snapshot,options);
+      renderEquipmentControlState(snapshot);
+    };
+  }
 })();
 """
