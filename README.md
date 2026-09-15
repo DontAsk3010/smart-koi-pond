@@ -1,6 +1,6 @@
 # Smart Koi Pond
 
-Private engineering repository for the governed **Smart Koi Pond Closed-Loop IoT System**.
+Public engineering repository for the governed **Smart Koi Pond Closed-Loop IoT System**. Public visibility exists for transparent read/review collaboration; write, merge, deployment, secrets, configuration, and physical-control authority remain explicitly governed.
 
 ## Authority
 
@@ -19,9 +19,23 @@ Mandatory read order before substantive changes:
 
 The portable handoff is continuity state only. It does not override the handbook or governed specifications.
 
+## AI engineering responsibility — fixed maker–checker model
+
+The owner has assigned a fixed development responsibility model:
+
+- **Claude = PRIMARY SYSTEM ARCHITECT / IMPLEMENTER.** Claude performs the first-pass substantive engineering reasoning, proposes architecture/behavior changes, writes or modifies code, writes tests, prepares branch/PR changes, and fixes review findings.
+- **ChatGPT = INDEPENDENT REVIEWER / AUDITOR.** ChatGPT reviews Claude's exact PR head against Drive authority, deterministic architecture, safety/no-fabrication rules, regression evidence, CI, persistence/recovery semantics, and virtual-to-physical continuity. ChatGPT returns `APPROVE`, `CHANGES REQUIRED`, or `HOLD`.
+- When ChatGPT requests changes, **Claude implements the correction** and ChatGPT re-reviews the corrected head.
+- Green CI is necessary but not sufficient for material acceptance; independent review is a complementary gate.
+- ChatGPT may implement substantive code only when the owner explicitly reassigns a named task to ChatGPT.
+
+This is an engineering-development workflow. It does **not** make Claude or ChatGPT part of the pond runtime. Critical life-support control remains deterministic and local; no AI service is required for real-time control, arbitration, verification, fail-safe operation, or recovery.
+
+See [`CLAUDE_START_HERE.md`](CLAUDE_START_HERE.md) for the implementer protocol and [`CHATGPT_REVIEW_START_HERE.md`](CHATGPT_REVIEW_START_HERE.md) for the independent review protocol.
+
 ## Current phase
 
-**Final Integrated Virtual Pond software acceptance is complete on the same canonical runtime. The active engineering phase is deployment and operational packaging of that accepted browser application while physical Site Integration & Commissioning remains later and separately governed.**
+**Final Integrated Virtual Pond software acceptance is complete on the same canonical runtime. The active engineering phase is governed owner-operation hardening and subsequent production-intent development while physical Site Integration & Commissioning remains later and separately governed.**
 
 The project is building a deterministic, inspectable closed-loop system that follows:
 
@@ -29,7 +43,7 @@ The project is building a deterministic, inspectable closed-loop system that fol
 
 The Digital Twin is production-intent engineering, not a disposable demo. The same domain model, state contracts, command arbitration, verification, event semantics, historian lineage, process models, and operator workflow are intended to survive the path from simulation to physical operation through validated adapters.
 
-Current accepted software scope includes the validated Digital Twin core, modular capability platform, state-bound animated process projection, Simulation Exit/SIL evidence, source/authority adapters, virtual fault/recovery, reconfigurable pond/hydraulic profiles, integrated biological/environmental process behavior, mechanical filtration/waste/sludge/filter-loading fidelity, source-water qualification and water exchange, governed reconfiguration/self-recovery, interactive equipment/process inspection, historian-backed trends and event markers, incident/recovery causality, filtration/backwash causality, and final whole-product Integrated Virtual Pond acceptance. Exact accepted commit, CI run, test count, evidence lanes, and next work are maintained in the governed Current State and ACTIVE Portable Handoff rather than duplicated here as a competing checkpoint.
+Current accepted software scope includes the validated Digital Twin core, modular capability platform, state-bound animated process projection, Simulation Exit/SIL evidence, source/authority adapters, virtual fault/recovery, reconfigurable pond/hydraulic profiles, integrated biological/environmental process behavior, mechanical filtration/waste/sludge/filter-loading fidelity, source-water qualification and water exchange, governed reconfiguration/self-recovery, interactive equipment/process inspection, historian-backed trends and event markers, incident/recovery causality, filtration/backwash causality, final whole-product Integrated Virtual Pond acceptance, integrated owner operation, and backwash/water-restoration hardening. Exact accepted commit, CI run, test count, evidence lanes, and next work are maintained in governed Current State and ACTIVE Portable Handoff rather than duplicated here as a competing checkpoint.
 
 ## Repository scope
 
@@ -70,6 +84,7 @@ Current accepted software scope includes the validated Digital Twin core, modula
 - Chemical dosing remains disabled until separately validated and governed.
 - Final production engineering setpoints are not frozen by software examples or virtual configuration values.
 - Durable changes to system behavior, safety, modes, dependencies, recovery, deployment, UI control semantics, or validation must be promoted into governed Drive authority/specifications.
+- Unsupported numeric thresholds, timeout values, retry limits, or safety parameters must not be invented merely to complete implementation.
 
 ## Repository isolation
 
@@ -119,6 +134,6 @@ Dockerfile          # replaceable vendor-neutral container packaging
 
 ## Development rule
 
-`main` represents the accepted engineering baseline. Material behavior changes are developed on an isolated branch/PR and promoted only after the relevant automated tests and evidence lanes pass. Failed or missing critical regression blocks promotion.
+`main` represents the accepted engineering baseline. Material behavior changes are designed and implemented by Claude on an isolated branch/PR, run through the relevant automated tests/evidence gates, then independently reviewed by ChatGPT before promotion. Failed/missing critical regression or unresolved review findings block acceptance.
 
 The browser/visual layer must remain a projection of canonical runtime truth. It must not create a second control engine, fabricate missing values, or display decorative success that is unsupported by process state and verification evidence.
