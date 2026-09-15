@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from smart_koi_pond.control.ammonia import (
-    UNIONIZED_AMMONIA_N_PARAMETER,
+    UNIONIZED_AMMONIA_PARAMETER,
     calculate_unionized_ammonia_n,
 )
 from smart_koi_pond.domain.enums import OperatingMode
@@ -17,7 +17,8 @@ class WaterQualityRecoveryPolicy:
 
     Thresholds remain in SimulationControlPolicy. This policy only governs whether an
     already classified chemistry problem may use the existing governed WATER_CHANGE
-    workflow and how retries/recovery verification are bounded.
+    workflow and how retries/recovery verification are bounded. NH3 values are
+    molecular un-ionized ammonia in mg/L, not NH3-N.
     """
 
     enabled: bool = False
@@ -69,8 +70,8 @@ class WaterQualityRecoveryManager:
     _REASON_TO_PARAMETER = {
         "TAN_HIGH": "total_ammonia_nitrogen_mg_l",
         "TAN_EMERGENCY": "total_ammonia_nitrogen_mg_l",
-        "NH3_HIGH": UNIONIZED_AMMONIA_N_PARAMETER,
-        "NH3_EMERGENCY": UNIONIZED_AMMONIA_N_PARAMETER,
+        "NH3_HIGH": UNIONIZED_AMMONIA_PARAMETER,
+        "NH3_EMERGENCY": UNIONIZED_AMMONIA_PARAMETER,
         "NITRITE_HIGH": "nitrite_mg_l",
         "NITRITE_EMERGENCY": "nitrite_mg_l",
         "NITRATE_HIGH": "nitrate_mg_l",
@@ -127,7 +128,7 @@ class WaterQualityRecoveryManager:
         return None
 
     @staticmethod
-    def _source_unionized_ammonia_n(
+    def _source_unionized_ammonia(
         source_water: dict[str, Any],
     ) -> float | None:
         tan = source_water.get("total_ammonia_nitrogen_mg_l")
@@ -139,7 +140,7 @@ class WaterQualityRecoveryManager:
             tan_n_mg_l=float(tan),
             ph=float(ph),
             temperature_c=float(temperature),
-        ).unionized_ammonia_n_mg_l
+        ).unionized_ammonia_nh3_mg_l
 
     def _source_supports_safer_direction(
         self,
@@ -150,8 +151,8 @@ class WaterQualityRecoveryManager:
     ) -> bool:
         if not source_water.get("pond_use_qualified"):
             return False
-        if parameter == UNIONIZED_AMMONIA_N_PARAMETER:
-            source_nh3 = self._source_unionized_ammonia_n(source_water)
+        if parameter == UNIONIZED_AMMONIA_PARAMETER:
+            source_nh3 = self._source_unionized_ammonia(source_water)
             return source_nh3 is not None and source_nh3 < pond_value
         source_value = source_water.get(parameter)
         if source_value is None:
@@ -178,7 +179,7 @@ class WaterQualityRecoveryManager:
                 self.policy.tan_recover_below is not None
                 and value < self.policy.tan_recover_below
             )
-        if parameter == UNIONIZED_AMMONIA_N_PARAMETER:
+        if parameter == UNIONIZED_AMMONIA_PARAMETER:
             return (
                 self.policy.nh3_recover_below is not None
                 and value < self.policy.nh3_recover_below
@@ -316,5 +317,6 @@ class WaterQualityRecoveryManager:
             "last_outcome": self.last_outcome,
             "last_reason": self.last_reason,
             "lockout_reason": self.lockout_reason,
+            "nh3_concentration_basis": "MOLECULAR_NH3_MG_L",
             "automatic_chemical_dosing_authorized": False,
         }
