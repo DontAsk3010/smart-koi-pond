@@ -73,6 +73,8 @@ class StateEstimate:
     timestamp: datetime
     values: dict[str, float | None]
     quality: dict[str, DataQuality]
+    provenance: dict[str, str] = field(default_factory=dict)
+    derivation: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(slots=True, frozen=True)
