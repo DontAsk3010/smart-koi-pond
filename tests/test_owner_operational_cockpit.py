@@ -8,7 +8,7 @@ from smart_koi_pond.dashboard.webapp import COMPOSED_INDEX_HTML
 def test_owner_overview_contains_integrated_operational_cockpit() -> None:
     html = COMPOSED_INDEX_HTML
     assert 'id="owner-operational-cockpit-style"' in html
-    assert 'id="ownerOperationalCockpit"' in html
+    assert "cockpit.id='ownerOperationalCockpit'" in html
     assert "Live Pond & Process" in html
     assert "Key Parameters" in html
     assert "Active Alarms" in html
