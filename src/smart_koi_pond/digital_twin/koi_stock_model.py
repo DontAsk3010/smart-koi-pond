@@ -34,7 +34,11 @@ class KoiStockWaterExchangePondModel(WaterExchangePondModel):
     def configure_feeding_policy(self, policy: FeedingPolicy) -> None:
         self.feeding_policy = policy
 
-    def set_water_quality_feed_inhibited(self, inhibited: bool, reason: str | None = None) -> None:
+    def set_water_quality_feed_inhibited(
+        self,
+        inhibited: bool,
+        reason: str | None = None,
+    ) -> None:
         self._water_quality_feed_inhibited = bool(inhibited)
         self._water_quality_feed_inhibit_reason = reason if inhibited else None
 
@@ -57,7 +61,9 @@ class KoiStockWaterExchangePondModel(WaterExchangePondModel):
                 "planned_feed_per_meal_g": None,
                 "provenance": "UNAVAILABLE",
                 "water_quality_feed_inhibited": self._water_quality_feed_inhibited,
-                "water_quality_feed_inhibit_reason": self._water_quality_feed_inhibit_reason,
+                "water_quality_feed_inhibit_reason": (
+                    self._water_quality_feed_inhibit_reason
+                ),
             }
         plan = self.feeding_policy.evaluate(
             biomass_snapshot=self.koi_stock_snapshot(),
@@ -65,19 +71,16 @@ class KoiStockWaterExchangePondModel(WaterExchangePondModel):
         )
         plan = dict(plan)
         plan["water_quality_feed_inhibited"] = self._water_quality_feed_inhibited
-        plan["water_quality_feed_inhibit_reason"] = self._water_quality_feed_inhibit_reason
+        plan["water_quality_feed_inhibit_reason"] = (
+            self._water_quality_feed_inhibit_reason
+        )
         planned = plan.get("planned_feed_kg_per_day")
         plan["effective_feed_kg_per_day"] = (
-            0.0 if self._water_quality_feed_inhibited and planned is not None else planned
+            0.0
+            if self._water_quality_feed_inhibited and planned is not None
+            else planned
         )
         return plan
-
-    def biological_snapshot(self) -> dict[str, Any]:
-        snapshot = super().biological_snapshot()
-        snapshot = dict(snapshot)
-        snapshot["koi_stock"] = self.koi_stock_snapshot()
-        snapshot["feeding_plan"] = self.feeding_plan_snapshot()
-        return snapshot
 
     def _effective_biological_load(self) -> tuple[float | None, float | None, str]:
         stock = self.koi_stock_snapshot()
@@ -96,12 +99,24 @@ class KoiStockWaterExchangePondModel(WaterExchangePondModel):
             feed = 0.0
         return profile.biomass_kg, feed, "LEGACY_POND_PROFILE"
 
+    def biological_snapshot(self) -> dict[str, Any]:
+        snapshot = dict(super().biological_snapshot())
+        biomass, feed, load_basis = self._effective_biological_load()
+        snapshot["koi_stock"] = self.koi_stock_snapshot()
+        snapshot["feeding_plan"] = self.feeding_plan_snapshot()
+        snapshot["load_basis"] = load_basis
+        snapshot["effective_biomass_kg"] = biomass
+        snapshot["effective_feed_kg_per_day"] = feed
+        snapshot["feed_inhibited"] = self._water_quality_feed_inhibited
+        snapshot["feed_inhibit_reason"] = self._water_quality_feed_inhibit_reason
+        return snapshot
+
     def _biological_oxygen_demand(self, seconds: float) -> float:
         if self.biology is None or self.hydraulics is None:
             return 0.0
-        biomass_kg, feed_kg_per_day, load_basis = self._effective_biological_load()
+        biomass_kg, feed_kg_per_day, _ = self._effective_biological_load()
         actual_volume_l = self.actual_water_volume_l()
-        demand = self.biology.step(
+        return self.biology.step(
             self.state,
             seconds=seconds,
             volume_l=float(actual_volume_l or 0.0),
@@ -112,22 +127,22 @@ class KoiStockWaterExchangePondModel(WaterExchangePondModel):
                 self.hydraulics.required_circulation_flow_l_min
             ),
         )
-        snapshot = self.biology.snapshot()
-        snapshot["load_basis"] = load_basis
-        snapshot["feed_inhibited"] = self._water_quality_feed_inhibited
-        snapshot["feed_inhibit_reason"] = self._water_quality_feed_inhibit_reason
-        self.biology._last_snapshot = snapshot
-        return demand
 
     def checkpoint_state(self) -> dict[str, Any]:
         payload = super().checkpoint_state()
         payload["koi_stock_and_feeding"] = {
-            "koi_stock": self.koi_stock.to_dict() if self.koi_stock is not None else None,
+            "koi_stock": (
+                self.koi_stock.to_dict() if self.koi_stock is not None else None
+            ),
             "feeding_policy": (
-                self.feeding_policy.to_dict() if self.feeding_policy is not None else None
+                self.feeding_policy.to_dict()
+                if self.feeding_policy is not None
+                else None
             ),
             "water_quality_feed_inhibited": self._water_quality_feed_inhibited,
-            "water_quality_feed_inhibit_reason": self._water_quality_feed_inhibit_reason,
+            "water_quality_feed_inhibit_reason": (
+                self._water_quality_feed_inhibit_reason
+            ),
         }
         return payload
 
