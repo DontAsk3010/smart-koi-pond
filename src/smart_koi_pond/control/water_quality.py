@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from math import log10
 from typing import Any
 
 from smart_koi_pond.control.ammonia import (
@@ -127,24 +128,97 @@ class WaterQualityRecoveryManager:
                 return reason, parameter, float(value)
         return None
 
-    @staticmethod
-    def _source_unionized_ammonia(
+    def _projected_unionized_ammonia_after_exchange(
+        self,
+        *,
+        snapshot: Any,
         source_water: dict[str, Any],
     ) -> float | None:
-        tan = source_water.get("total_ammonia_nitrogen_mg_l")
-        ph = source_water.get("ph")
-        temperature = source_water.get("temperature_c")
-        if tan is None or ph is None or temperature is None:
+        """Project post-exchange molecular NH3 using the governed mixing basis.
+
+        The recovery manager must not approve an NH3 water exchange merely because
+        the source's standalone NH3 is lower. The final pond NH3 is recalculated from
+        projected TAN, pH, and temperature after the configured drain/refill fraction.
+        pH uses the same simplified buffer-weighted hydrogen-activity basis as the
+        canonical water-exchange model. Missing required evidence fails closed.
+        """
+        if self.policy.exchange_fraction_pct is None:
             return None
+        values = snapshot.estimate.values
+        required_pond = {
+            "water_level_pct": values.get("water_level_pct"),
+            "total_ammonia_nitrogen_mg_l": values.get(
+                "total_ammonia_nitrogen_mg_l"
+            ),
+            "ph": values.get("ph"),
+            "temperature_c": values.get("temperature_c"),
+            "alkalinity_mg_l_as_caco3": values.get("alkalinity_mg_l_as_caco3"),
+        }
+        required_source = {
+            "total_ammonia_nitrogen_mg_l": source_water.get(
+                "total_ammonia_nitrogen_mg_l"
+            ),
+            "ph": source_water.get("ph"),
+            "temperature_c": source_water.get("temperature_c"),
+            "alkalinity_mg_l_as_caco3": source_water.get(
+                "alkalinity_mg_l_as_caco3"
+            ),
+        }
+        if any(value is None for value in required_pond.values()) or any(
+            value is None for value in required_source.values()
+        ):
+            return None
+
+        level = float(required_pond["water_level_pct"])
+        if level <= 0:
+            return None
+        refill_pct = min(float(self.policy.exchange_fraction_pct), level)
+        source_fraction = refill_pct / level
+        remaining_fraction = 1.0 - source_fraction
+
+        pond_tan = float(required_pond["total_ammonia_nitrogen_mg_l"])
+        source_tan = float(required_source["total_ammonia_nitrogen_mg_l"])
+        projected_tan = pond_tan * remaining_fraction + source_tan * source_fraction
+
+        pond_temperature = float(required_pond["temperature_c"])
+        source_temperature = float(required_source["temperature_c"])
+        projected_temperature = (
+            pond_temperature * remaining_fraction
+            + source_temperature * source_fraction
+        )
+
+        pond_alkalinity = max(
+            float(required_pond["alkalinity_mg_l_as_caco3"]),
+            1e-9,
+        )
+        source_alkalinity = max(
+            float(required_source["alkalinity_mg_l_as_caco3"]),
+            1e-9,
+        )
+        pond_weight = remaining_fraction * pond_alkalinity
+        source_weight = source_fraction * source_alkalinity
+        denominator = pond_weight + source_weight
+        if denominator <= 0:
+            return None
+        pond_ph = float(required_pond["ph"])
+        source_ph = float(required_source["ph"])
+        hydrogen_activity = (
+            10 ** (-pond_ph) * pond_weight
+            + 10 ** (-source_ph) * source_weight
+        ) / denominator
+        projected_ph = -log10(max(hydrogen_activity, 1e-14))
+        projected_ph = min(14.0, max(0.0, projected_ph))
+
         return calculate_unionized_ammonia_n(
-            tan_n_mg_l=float(tan),
-            ph=float(ph),
-            temperature_c=float(temperature),
+            tan_n_mg_l=projected_tan,
+            ph=projected_ph,
+            temperature_c=projected_temperature,
         ).unionized_ammonia_nh3_mg_l
 
     def _source_supports_safer_direction(
         self,
         *,
+        snapshot: Any,
         parameter: str,
         pond_value: float,
         source_water: dict[str, Any],
@@ -152,8 +226,11 @@ class WaterQualityRecoveryManager:
         if not source_water.get("pond_use_qualified"):
             return False
         if parameter == UNIONIZED_AMMONIA_PARAMETER:
-            source_nh3 = self._source_unionized_ammonia(source_water)
-            return source_nh3 is not None and source_nh3 < pond_value
+            projected_nh3 = self._projected_unionized_ammonia_after_exchange(
+                snapshot=snapshot,
+                source_water=source_water,
+            )
+            return projected_nh3 is not None and projected_nh3 < pond_value
         source_value = source_water.get(parameter)
         if source_value is None:
             return False
@@ -251,6 +328,7 @@ class WaterQualityRecoveryManager:
             self.last_reason = reason
             return None
         if not self._source_supports_safer_direction(
+            snapshot=snapshot,
             parameter=parameter,
             pond_value=value,
             source_water=source_water,
