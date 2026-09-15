@@ -21,6 +21,9 @@ class WaterQualityThresholdProfile:
     tan_watch_above: float | None = None
     tan_emergency_above: float | None = None
     tan_recover_below: float | None = None
+    nh3_watch_above: float | None = None
+    nh3_emergency_above: float | None = None
+    nh3_recover_below: float | None = None
     nitrite_watch_above: float | None = None
     nitrite_emergency_above: float | None = None
     nitrite_recover_below: float | None = None
@@ -45,6 +48,9 @@ class WaterQualityThresholdProfile:
             "tan_watch_above",
             "tan_emergency_above",
             "tan_recover_below",
+            "nh3_watch_above",
+            "nh3_emergency_above",
+            "nh3_recover_below",
             "nitrite_watch_above",
             "nitrite_emergency_above",
             "nitrite_recover_below",
@@ -61,6 +67,12 @@ class WaterQualityThresholdProfile:
         ):
             raise ValueError("TAN emergency must be above TAN watch")
         if (
+            self.nh3_watch_above is not None
+            and self.nh3_emergency_above is not None
+            and self.nh3_emergency_above <= self.nh3_watch_above
+        ):
+            raise ValueError("NH3 emergency must be above NH3 watch")
+        if (
             self.nitrite_watch_above is not None
             and self.nitrite_emergency_above is not None
             and self.nitrite_emergency_above <= self.nitrite_watch_above
@@ -72,6 +84,12 @@ class WaterQualityThresholdProfile:
             and self.tan_recover_below >= self.tan_watch_above
         ):
             raise ValueError("TAN recovery must be below TAN watch")
+        if (
+            self.nh3_recover_below is not None
+            and self.nh3_watch_above is not None
+            and self.nh3_recover_below >= self.nh3_watch_above
+        ):
+            raise ValueError("NH3 recovery must be below NH3 watch")
         if (
             self.nitrite_recover_below is not None
             and self.nitrite_watch_above is not None
@@ -136,6 +154,9 @@ class WaterQualityThresholdProfile:
             tan_watch_above=opt("tan_watch_above"),
             tan_emergency_above=opt("tan_emergency_above"),
             tan_recover_below=opt("tan_recover_below"),
+            nh3_watch_above=opt("nh3_watch_above"),
+            nh3_emergency_above=opt("nh3_emergency_above"),
+            nh3_recover_below=opt("nh3_recover_below"),
             nitrite_watch_above=opt("nitrite_watch_above"),
             nitrite_emergency_above=opt("nitrite_emergency_above"),
             nitrite_recover_below=opt("nitrite_recover_below"),
