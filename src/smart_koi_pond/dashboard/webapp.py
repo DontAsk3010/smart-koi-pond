@@ -25,6 +25,10 @@ from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
 from smart_koi_pond.dashboard.reference_profile_ui import REFERENCE_PROFILE_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.source_water_ui import SOURCE_WATER_UI_SCRIPT
+from smart_koi_pond.dashboard.trend_event_ui import (
+    TREND_EVENT_SCRIPT,
+    TREND_EVENT_STYLE,
+)
 from smart_koi_pond.dashboard.web_ui import INDEX_HTML
 
 COMPOSED_INDEX_HTML = INDEX_HTML.replace(
@@ -33,7 +37,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{ANIMATED_POND_STYLE}"
         f"{INTEGRATED_VIRTUAL_POND_STYLE}"
         f"{GOVERNANCE_STATUS_STYLE}"
-        f"{EQUIPMENT_DETAIL_STYLE}</head>"
+        f"{EQUIPMENT_DETAIL_STYLE}"
+        f"{TREND_EVENT_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -46,7 +51,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{INTEGRATED_CONTROL_UI_SCRIPT}</script>"
         f"<script>{REFERENCE_PROFILE_UI_SCRIPT}</script>"
         f"<script>{GOVERNANCE_STATUS_SCRIPT}</script>"
-        f"<script>{EQUIPMENT_DETAIL_SCRIPT}</script></body>"
+        f"<script>{EQUIPMENT_DETAIL_SCRIPT}</script>"
+        f"<script>{TREND_EVENT_SCRIPT}</script></body>"
     ),
 )
 
@@ -178,7 +184,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8080,
 ) -> None:
-    server = create_server(service, host=host, port=port,)
+    server = create_server(service, host=host, port=port)
     service.start_background()
     try:
         server.serve_forever()
