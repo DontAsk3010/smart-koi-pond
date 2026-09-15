@@ -24,15 +24,15 @@ main{max-width:none;margin:0;padding:14px 16px 24px}
 SIDEBAR_NAVIGATION_SCRIPT = r"""
 (function(){
   const LABELS={
-    process:['Virtual Pond','◉'],
-    overview:['System Overview','▦'],
+    overview:['Overview','▦'],
+    process:['Pond Schematic','◉'],
     trends:['Trends & Graphs','⌁'],
     simulator:['Scenario Simulator','⚙'],
     logic:['Control Logic','⌘'],
     events:['Event Log','▤'],
     integrated:['Settings / Configuration','⚙']
   };
-  const ORDER=['process','overview','trends','simulator','logic','events','integrated'];
+  const ORDER=['overview','process','trends','simulator','logic','events','integrated'];
   function installOwnerSidebar(){
     const tabs=document.getElementById('tabs');
     if(!tabs||tabs.dataset.ownerSidebar==='1')return;

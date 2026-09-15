@@ -20,17 +20,13 @@ VIRTUAL_POND_HOME_SCRIPT = r"""
     if(!section||!grid||!tabs||el('virtualPondHome'))return;
     section.classList.add('virtual-pond-home');
     document.title='Smart Koi Pond — Virtual Pond';
-    const processButton=tabs.querySelector('[data-view="process"]');
-    if(processButton){processButton.textContent='Virtual Pond';tabs.insertBefore(processButton,tabs.firstChild)}
-    const overviewButton=tabs.querySelector('[data-view="overview"]');
-    if(overviewButton)overviewButton.textContent='System Overview';
     const home=document.createElement('div');home.id='virtualPondHome';home.className='vp-home';home.innerHTML=`
       <div class="vp-hero">
         <div class="vp-kicker">SMART KOI POND · CANONICAL RUNTIME</div>
         <div class="vp-title">Virtual Pond</div>
-        <div class="vp-subtitle">Live browser view of the governed pond process. Motion, equipment state and water values are projections of the canonical runtime; unavailable evidence stays unavailable.</div>
+        <div class="vp-subtitle">Detailed process view of the governed pond. The owner operational cockpit is the primary browser surface; this page remains the deeper schematic view. Motion, equipment state and water values are projections of the canonical runtime; unavailable evidence stays unavailable.</div>
         <div class="vp-truth"><span id="vpPondTruth">Pond Profile: INPUT REQUIRED</span><span id="vpBioTruth">Biology: INPUT REQUIRED</span><span id="vpFilterTruth">Filter: INPUT REQUIRED</span><span class="required">REAL DEVICE CONTROL: CLOSED</span></div>
-        <div class="vp-actions"><button id="vpOpenIntegrated" class="btn ok">Open Integrated Setup</button><button id="vpOpenOverview" class="btn">System Overview</button><button id="vpOpenEvents" class="btn">Historian / Events</button></div>
+        <div class="vp-actions"><button id="vpOpenIntegrated" class="btn ok">Open Integrated Setup</button><button id="vpOpenOverview" class="btn">Overview</button><button id="vpOpenEvents" class="btn">Historian / Events</button></div>
       </div>
       <div class="vp-summary">
         <div class="vp-metric"><div class="vp-label">System State</div><div id="vpState" class="vp-value">—</div><div id="vpMode" class="vp-detail">—</div></div>
@@ -43,7 +39,6 @@ VIRTUAL_POND_HOME_SCRIPT = r"""
     el('vpOpenIntegrated').onclick=()=>{const b=tabs.querySelector('[data-view="integrated"]');if(b)b.click()};
     el('vpOpenOverview').onclick=()=>{const b=tabs.querySelector('[data-view="overview"]');if(b)b.click()};
     el('vpOpenEvents').onclick=()=>{const b=tabs.querySelector('[data-view="events"]');if(b)b.click()};
-    if(processButton){processButton.click()}else{document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));section.classList.add('active')}
   }
   function renderHome(s){
     installHome();if(!s)return;
