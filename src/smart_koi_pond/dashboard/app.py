@@ -2,7 +2,6 @@ import os
 from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
-from smart_koi_pond.control.water_quality import WaterQualityRecoveryPolicy
 from smart_koi_pond.dashboard.koi_stock_service import KoiStockRuntimeApplicationService
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
@@ -27,6 +26,8 @@ def build_integrated_virtual_runtime(
     engineering references, or final production setpoints. Pond/hydraulic,
     koi-stock/feeding, biological, mechanical-filtration and source-water profiles
     remain explicitly unconfigured until supplied through governed configuration.
+    Automatic water-quality exchange remains disabled until an explicit governed
+    WaterQualityThresholdProfile authorizes it.
     """
     policy = SimulationControlPolicy(
         do_watch_below=5.0,
@@ -48,17 +49,6 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    water_quality_recovery = WaterQualityRecoveryPolicy(
-        enabled=True,
-        exchange_fraction_pct=10.0,
-        max_attempts=2,
-        cooldown_seconds=1800.0,
-        tan_recover_below=0.3,
-        nitrite_recover_below=0.3,
-        nitrate_recover_below=15.0,
-        ph_recover_low=6.9,
-        ph_recover_high=8.1,
-    )
     runtime = WaterQualityRegulatingProductionRuntime(
         KoiStockWaterExchangePondModel(
             PondState(
@@ -73,7 +63,6 @@ def build_integrated_virtual_runtime(
             ),
         ),
         policy,
-        water_quality_recovery_policy=water_quality_recovery,
         clock=SimulationClock.start(datetime(2026, 1, 1, tzinfo=UTC)),
         config_version="integrated-virtual-pond-v1-input-required",
         historian_path=historian_path,
@@ -97,7 +86,7 @@ def build_integrated_virtual_runtime(
             "source_water_profile": "INPUT_REQUIRED",
             "source_water_qualification": "INPUT_REQUIRED",
             "automatic_water_quality_recovery": (
-                "ENABLED_BUT_FAIL_CLOSED_UNTIL_DEPENDENCIES_CONFIGURED"
+                "DISABLED_UNTIL_GOVERNED_THRESHOLD_PROFILE"
             ),
             "automatic_chemical_dosing_authorized": False,
             "flow_monitoring": "DISABLED_UNTIL_POND_PROFILE_CONFIGURED",
@@ -173,6 +162,7 @@ def main() -> None:
         "INPUT REQUIRED until configured"
     )
     print("Source-water pond-use qualification: FAIL-CLOSED / EVIDENCE REQUIRED")
+    print("Automatic water-quality exchange: DISABLED UNTIL GOVERNED PROFILE")
     print("Automatic chemical dosing authority: DISABLED")
     print("Governed reconfiguration / rollback / bounded self-recovery: ENABLED")
     print(f"Historian: {historian_path}")
