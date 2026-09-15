@@ -1,5 +1,9 @@
 from dataclasses import dataclass
 
+from smart_koi_pond.control.ammonia import (
+    UNIONIZED_AMMONIA_N_PARAMETER,
+    calculate_unionized_ammonia_n,
+)
 from smart_koi_pond.domain.enums import CommandOwner, DataQuality, SystemState
 from smart_koi_pond.domain.models import (
     Classification,
@@ -32,6 +36,8 @@ class SimulationControlPolicy:
     water_level_verification_min_delta: float = 0.5
     tan_watch_above: float | None = None
     tan_emergency_above: float | None = None
+    nh3_watch_above: float | None = None
+    nh3_emergency_above: float | None = None
     nitrite_watch_above: float | None = None
     nitrite_emergency_above: float | None = None
     nitrate_watch_above: float | None = None
@@ -55,6 +61,12 @@ class SimulationControlPolicy:
             and self.tan_emergency_above <= self.tan_watch_above
         ):
             raise ValueError("tan_emergency_above must be greater than tan_watch_above")
+        if (
+            self.nh3_watch_above is not None
+            and self.nh3_emergency_above is not None
+            and self.nh3_emergency_above <= self.nh3_watch_above
+        ):
+            raise ValueError("nh3_emergency_above must be greater than nh3_watch_above")
         if (
             self.nitrite_watch_above is not None
             and self.nitrite_emergency_above is not None
@@ -107,8 +119,52 @@ class SimulationControlPolicy:
 def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
     values = {item.parameter: item.value for item in validated.values()}
     quality = {item.parameter: item.quality for item in validated.values()}
+    provenance = {item.parameter: "VALIDATED_SENSOR" for item in validated.values()}
+    derivation: dict[str, dict[str, object]] = {}
     timestamp = max(item.timestamp for item in validated.values())
-    return StateEstimate(timestamp=timestamp, values=values, quality=quality)
+
+    required = {
+        "total_ammonia_nitrogen_mg_l": values.get("total_ammonia_nitrogen_mg_l"),
+        "ph": values.get("ph"),
+        "temperature_c": values.get("temperature_c"),
+    }
+    missing_or_invalid = [
+        name
+        for name, value in required.items()
+        if value is None or quality.get(name) != DataQuality.GOOD
+    ]
+    if missing_or_invalid:
+        values[UNIONIZED_AMMONIA_N_PARAMETER] = None
+        quality[UNIONIZED_AMMONIA_N_PARAMETER] = DataQuality.INVALID
+        provenance[UNIONIZED_AMMONIA_N_PARAMETER] = "UNAVAILABLE"
+        derivation[UNIONIZED_AMMONIA_N_PARAMETER] = {
+            "status": "INPUT_REQUIRED",
+            "required_inputs": (
+                "total_ammonia_nitrogen_mg_l",
+                "ph",
+                "temperature_c",
+            ),
+            "missing_or_invalid_inputs": tuple(missing_or_invalid),
+            "fabricated": False,
+        }
+    else:
+        result = calculate_unionized_ammonia_n(
+            tan_n_mg_l=float(required["total_ammonia_nitrogen_mg_l"]),
+            ph=float(required["ph"]),
+            temperature_c=float(required["temperature_c"]),
+        )
+        values[UNIONIZED_AMMONIA_N_PARAMETER] = result.unionized_ammonia_n_mg_l
+        quality[UNIONIZED_AMMONIA_N_PARAMETER] = DataQuality.GOOD
+        provenance[UNIONIZED_AMMONIA_N_PARAMETER] = result.provenance
+        derivation[UNIONIZED_AMMONIA_N_PARAMETER] = result.to_dict()
+
+    return StateEstimate(
+        timestamp=timestamp,
+        values=values,
+        quality=quality,
+        provenance=provenance,
+        derivation=derivation,
+    )
 
 
 def _mark_missing(
@@ -154,6 +210,7 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     level = estimate.values.get("water_level_pct")
     temperature = estimate.values.get("temperature_c")
     tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
+    nh3 = estimate.values.get(UNIONIZED_AMMONIA_N_PARAMETER)
     nitrite = estimate.values.get("nitrite_mg_l")
     nitrate = estimate.values.get("nitrate_mg_l")
     ph = estimate.values.get("ph")
@@ -223,6 +280,17 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     state = _classify_upper_limit(
         state=state,
         reasons=reasons,
+        value=nh3,
+        quality=estimate.quality.get(UNIONIZED_AMMONIA_N_PARAMETER),
+        watch_above=policy.nh3_watch_above,
+        emergency_above=policy.nh3_emergency_above,
+        parameter="NH3_N",
+        watch_reason="NH3_HIGH",
+        emergency_reason="NH3_EMERGENCY",
+    )
+    state = _classify_upper_limit(
+        state=state,
+        reasons=reasons,
         value=nitrite,
         quality=estimate.quality.get("nitrite_mg_l"),
         watch_above=policy.nitrite_watch_above,
@@ -285,6 +353,7 @@ def decide(
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
     tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
+    nh3 = estimate.values.get(UNIONIZED_AMMONIA_N_PARAMETER)
     nitrite = estimate.values.get("nitrite_mg_l")
     nitrate = estimate.values.get("nitrate_mg_l")
     ph = estimate.values.get("ph")
@@ -293,6 +362,10 @@ def decide(
         tan is not None
         and policy.tan_watch_above is not None
         and tan >= policy.tan_watch_above
+    ) or (
+        nh3 is not None
+        and policy.nh3_watch_above is not None
+        and nh3 >= policy.nh3_watch_above
     ) or (
         nitrite is not None
         and policy.nitrite_watch_above is not None
@@ -304,8 +377,14 @@ def decide(
         and nitrate >= policy.nitrate_watch_above
     )
 
-    if (do_value is not None and do_value <= policy.do_watch_below) or acute_nitrogen_support:
-        reason = "BIOLOGICAL_LOAD_SUPPORT" if acute_nitrogen_support else "LOW_DO_CORRECTION"
+    if (
+        do_value is not None and do_value <= policy.do_watch_below
+    ) or acute_nitrogen_support:
+        reason = (
+            "BIOLOGICAL_LOAD_SUPPORT"
+            if acute_nitrogen_support
+            else "LOW_DO_CORRECTION"
+        )
         intents["backup_aerator"] = CommandIntent(
             "backup_aerator",
             True,
@@ -321,7 +400,11 @@ def decide(
         )
 
     if (flow is not None and flow < policy.flow_watch_below) or acute_nitrogen_support:
-        reason = "BIOFILTER_FLOW_SUPPORT" if acute_nitrogen_support else "LOW_FLOW_BACKUP"
+        reason = (
+            "BIOFILTER_FLOW_SUPPORT"
+            if acute_nitrogen_support
+            else "LOW_FLOW_BACKUP"
+        )
         intents["backup_pump"] = CommandIntent(
             "backup_pump",
             True,
