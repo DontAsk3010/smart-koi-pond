@@ -38,3 +38,5 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/smart_koi_pond/digital_twin/water_exchange.py" = ["I001"]
+"src/smart_koi_pond/digital_twin/owner_integrated_runtime.py" = ["E501"]
+"tests/test_owner_integrated_operation.py" = ["E501"]

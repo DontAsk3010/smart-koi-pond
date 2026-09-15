@@ -2,15 +2,17 @@ import os
 from datetime import UTC, datetime
 
 from smart_koi_pond.control.engine import SimulationControlPolicy
-from smart_koi_pond.dashboard.koi_stock_service import KoiStockRuntimeApplicationService
+from smart_koi_pond.dashboard.owner_integrated_service import (
+    OwnerIntegratedRuntimeApplicationService,
+)
 from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.koi_stock_model import KoiStockWaterExchangePondModel
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
-from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
-from smart_koi_pond.digital_twin.water_quality_runtime import (
-    WaterQualityRegulatingProductionRuntime,
+from smart_koi_pond.digital_twin.owner_reporting_runtime import (
+    OwnerIntegratedReportingProductionRuntime,
 )
+from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.enums import EventType
 from smart_koi_pond.domain.models import PondState
 
@@ -49,7 +51,7 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    runtime = WaterQualityRegulatingProductionRuntime(
+    runtime = OwnerIntegratedReportingProductionRuntime(
         KoiStockWaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
@@ -85,6 +87,7 @@ def build_integrated_virtual_runtime(
             "mechanical_filtration_profile": "INPUT_REQUIRED",
             "source_water_profile": "INPUT_REQUIRED",
             "source_water_qualification": "INPUT_REQUIRED",
+            "backwash_restore_policy": "INPUT_REQUIRED",
             "automatic_water_quality_recovery": (
                 "DISABLED_UNTIL_GOVERNED_THRESHOLD_PROFILE"
             ),
@@ -96,6 +99,8 @@ def build_integrated_virtual_runtime(
             "hidden_engineering_defaults": False,
             "governed_reconfiguration": True,
             "bounded_self_recovery": True,
+            "owner_integrated_operation": True,
+            "owner_integrated_backwash_journey_report": True,
         },
     )
     return runtime
@@ -154,7 +159,7 @@ def main() -> None:
         "runtime-data/historian.jsonl",
     )
     runtime = build_integrated_virtual_runtime(historian_path=historian_path)
-    service = KoiStockRuntimeApplicationService(runtime)
+    service = OwnerIntegratedRuntimeApplicationService(runtime)
     print(f"Smart Koi Pond — Integrated Virtual Pond: http://{host}:{port}")
     print("SIMULATION / NO REAL DEVICE CONTROL")
     print(
@@ -165,6 +170,7 @@ def main() -> None:
     print("Automatic water-quality exchange: DISABLED UNTIL GOVERNED PROFILE")
     print("Automatic chemical dosing authority: DISABLED")
     print("Governed reconfiguration / rollback / bounded self-recovery: ENABLED")
+    print("Owner integrated operation: ENABLED / canonical runtime only")
     print(f"Historian: {historian_path}")
     serve(service, host=host, port=port)
 
