@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from smart_koi_pond.control.ammonia import (
     UNIONIZED_AMMONIA_N_PARAMETER,
+    UNIONIZED_AMMONIA_PARAMETER,
     calculate_unionized_ammonia_n,
 )
 from smart_koi_pond.domain.enums import CommandOwner, DataQuality, SystemState
@@ -134,19 +135,23 @@ def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
         if value is None or quality.get(name) != DataQuality.GOOD
     ]
     if missing_or_invalid:
-        values[UNIONIZED_AMMONIA_N_PARAMETER] = None
-        quality[UNIONIZED_AMMONIA_N_PARAMETER] = DataQuality.INVALID
-        provenance[UNIONIZED_AMMONIA_N_PARAMETER] = "UNAVAILABLE"
-        derivation[UNIONIZED_AMMONIA_N_PARAMETER] = {
-            "status": "INPUT_REQUIRED",
-            "required_inputs": (
-                "total_ammonia_nitrogen_mg_l",
-                "ph",
-                "temperature_c",
-            ),
-            "missing_or_invalid_inputs": tuple(missing_or_invalid),
-            "fabricated": False,
-        }
+        for parameter in (
+            UNIONIZED_AMMONIA_N_PARAMETER,
+            UNIONIZED_AMMONIA_PARAMETER,
+        ):
+            values[parameter] = None
+            quality[parameter] = DataQuality.INVALID
+            provenance[parameter] = "UNAVAILABLE"
+            derivation[parameter] = {
+                "status": "INPUT_REQUIRED",
+                "required_inputs": (
+                    "total_ammonia_nitrogen_mg_l",
+                    "ph",
+                    "temperature_c",
+                ),
+                "missing_or_invalid_inputs": tuple(missing_or_invalid),
+                "fabricated": False,
+            }
     else:
         result = calculate_unionized_ammonia_n(
             tan_n_mg_l=float(required["total_ammonia_nitrogen_mg_l"]),
@@ -154,9 +159,14 @@ def estimate_state(validated: dict[str, ValidatedMeasurement]) -> StateEstimate:
             temperature_c=float(required["temperature_c"]),
         )
         values[UNIONIZED_AMMONIA_N_PARAMETER] = result.unionized_ammonia_n_mg_l
-        quality[UNIONIZED_AMMONIA_N_PARAMETER] = DataQuality.GOOD
-        provenance[UNIONIZED_AMMONIA_N_PARAMETER] = result.provenance
-        derivation[UNIONIZED_AMMONIA_N_PARAMETER] = result.to_dict()
+        values[UNIONIZED_AMMONIA_PARAMETER] = result.unionized_ammonia_nh3_mg_l
+        for parameter in (
+            UNIONIZED_AMMONIA_N_PARAMETER,
+            UNIONIZED_AMMONIA_PARAMETER,
+        ):
+            quality[parameter] = DataQuality.GOOD
+            provenance[parameter] = result.provenance
+            derivation[parameter] = result.to_dict()
 
     return StateEstimate(
         timestamp=timestamp,
@@ -210,7 +220,7 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
     level = estimate.values.get("water_level_pct")
     temperature = estimate.values.get("temperature_c")
     tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
-    nh3 = estimate.values.get(UNIONIZED_AMMONIA_N_PARAMETER)
+    nh3 = estimate.values.get(UNIONIZED_AMMONIA_PARAMETER)
     nitrite = estimate.values.get("nitrite_mg_l")
     nitrate = estimate.values.get("nitrate_mg_l")
     ph = estimate.values.get("ph")
@@ -281,10 +291,10 @@ def classify(estimate: StateEstimate, policy: SimulationControlPolicy) -> Classi
         state=state,
         reasons=reasons,
         value=nh3,
-        quality=estimate.quality.get(UNIONIZED_AMMONIA_N_PARAMETER),
+        quality=estimate.quality.get(UNIONIZED_AMMONIA_PARAMETER),
         watch_above=policy.nh3_watch_above,
         emergency_above=policy.nh3_emergency_above,
-        parameter="NH3_N",
+        parameter="NH3",
         watch_reason="NH3_HIGH",
         emergency_reason="NH3_EMERGENCY",
     )
@@ -353,7 +363,7 @@ def decide(
     do_value = estimate.values.get("dissolved_oxygen_mg_l")
     flow = estimate.values.get("circulation_flow_l_min")
     tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
-    nh3 = estimate.values.get(UNIONIZED_AMMONIA_N_PARAMETER)
+    nh3 = estimate.values.get(UNIONIZED_AMMONIA_PARAMETER)
     nitrite = estimate.values.get("nitrite_mg_l")
     nitrate = estimate.values.get("nitrate_mg_l")
     ph = estimate.values.get("ph")
