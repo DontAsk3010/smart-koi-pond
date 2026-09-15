@@ -1,0 +1,100 @@
+name: Windows Virtual Pond Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project and packager
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pyinstaller
+
+      - name: Build one-file Windows Virtual Pond
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile `
+            --name SMART_KOI_POND_VIRTUAL_POND `
+            --paths src `
+            scripts/windows_virtual_pond_entry.py
+
+      - name: Smoke-test packaged canonical runtime
+        shell: pwsh
+        run: |
+          $env:SMART_KOI_AUTO_OPEN_BROWSER = "0"
+          $env:SMART_KOI_HOST = "127.0.0.1"
+          $env:SMART_KOI_PORT = "18082"
+          $env:SMART_KOI_HISTORIAN_PATH = "$PWD\runtime-data\windows-package-smoke.jsonl"
+          New-Item -ItemType Directory -Force -Path runtime-data | Out-Null
+          $process = Start-Process -FilePath ".\dist\SMART_KOI_POND_VIRTUAL_POND.exe" -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 45; $i++) {
+              Start-Sleep -Seconds 1
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:18082/api/health" -TimeoutSec 2
+                if ($health.status -eq "ok") {
+                  $ready = $true
+                  break
+                }
+              } catch { }
+            }
+            if (-not $ready) { throw "Packaged Virtual Pond did not become healthy" }
+            if ($health.execution_mode -ne "SIMULATION") { throw "Execution mode is not SIMULATION" }
+            if ($health.baseline_status -ne "BASELINE_NOT_MET") { throw "Unexpected baseline status" }
+            $html = (Invoke-WebRequest -Uri "http://127.0.0.1:18082/" -UseBasicParsing).Content
+            if ($html -notmatch "Virtual Pond") { throw "Virtual Pond browser surface missing" }
+            if ($html -notmatch "NO REAL DEVICE CONTROL") { throw "Authority boundary label missing" }
+            if ($html -notmatch "INPUT REQUIRED") { throw "Fail-honest configuration label missing" }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+
+      - name: Assemble owner package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item ".\dist\SMART_KOI_POND_VIRTUAL_POND.exe" ".\package\SMART_KOI_POND_VIRTUAL_POND.exe"
+          @"
+          SMART KOI POND — VIRTUAL POND FOR WINDOWS
+
+          1. Extract this ZIP to a normal writable folder.
+          2. Double-click SMART_KOI_POND_VIRTUAL_POND.exe.
+          3. Chrome/Edge will open the Virtual Pond automatically at http://127.0.0.1:8080.
+          4. Keep the console window open while using the local Virtual Pond.
+          5. Close the console window to stop it.
+
+          Authority mode: SIMULATION / NO REAL DEVICE CONTROL.
+          Historian is stored beside the executable under runtime-data\historian.jsonl.
+          This executable packages the same canonical Smart Koi Pond runtime; it is not a second control engine.
+
+          Note: this build is not code-signed. Windows SmartScreen may display a publisher warning.
+          "@ | Set-Content -Path ".\package\READ_ME_FIRST.txt" -Encoding UTF8
+
+      - name: Upload Windows owner package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMART_KOI_POND_VIRTUAL_POND_WINDOWS
+          path: package/
+          if-no-files-found: error
+          retention-days: 30
