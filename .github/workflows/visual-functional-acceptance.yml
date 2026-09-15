@@ -1,0 +1,47 @@
+name: Visual Functional Acceptance Evidence
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visual-functional-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Build visual functional acceptance evidence
+        continue-on-error: true
+        run: >-
+          python -m smart_koi_pond.scenarios.visual_functional_acceptance_matrix
+          --json-output artifacts/visual-functional-acceptance-evidence.json
+          --html-output artifacts/SMART_KOI_POND_VISUAL_FUNCTIONAL_ACCEPTANCE_EVIDENCE.html
+
+      - name: Upload visible acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMART_KOI_POND_VISUAL_FUNCTIONAL_ACCEPTANCE_EVIDENCE
+          path: |
+            artifacts/visual-functional-acceptance-evidence.json
+            artifacts/SMART_KOI_POND_VISUAL_FUNCTIONAL_ACCEPTANCE_EVIDENCE.html
+          if-no-files-found: error
+
+      - name: Enforce functional acceptance gate
+        run: pytest tests/test_visual_functional_acceptance.py tests/test_visual_functional_acceptance_evidence.py
