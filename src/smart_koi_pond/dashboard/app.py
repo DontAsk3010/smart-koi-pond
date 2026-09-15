@@ -9,8 +9,8 @@ from smart_koi_pond.dashboard.webapp import serve
 from smart_koi_pond.digital_twin.clock import SimulationClock
 from smart_koi_pond.digital_twin.koi_stock_model import KoiStockWaterExchangePondModel
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
-from smart_koi_pond.digital_twin.owner_integrated_runtime import (
-    OwnerIntegratedProductionRuntime,
+from smart_koi_pond.digital_twin.owner_reporting_runtime import (
+    OwnerIntegratedReportingProductionRuntime,
 )
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.enums import EventType
@@ -51,7 +51,7 @@ def build_integrated_virtual_runtime(
         ph_emergency_below=6.0,
         ph_emergency_above=9.0,
     )
-    runtime = OwnerIntegratedProductionRuntime(
+    runtime = OwnerIntegratedReportingProductionRuntime(
         KoiStockWaterExchangePondModel(
             PondState(
                 temperature_c=27.0,
@@ -100,6 +100,7 @@ def build_integrated_virtual_runtime(
             "governed_reconfiguration": True,
             "bounded_self_recovery": True,
             "owner_integrated_operation": True,
+            "owner_integrated_backwash_journey_report": True,
         },
     )
     return runtime
