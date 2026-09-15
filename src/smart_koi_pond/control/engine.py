@@ -286,9 +286,10 @@ def decide(
     flow = estimate.values.get("circulation_flow_l_min")
     tan = estimate.values.get("total_ammonia_nitrogen_mg_l")
     nitrite = estimate.values.get("nitrite_mg_l")
+    nitrate = estimate.values.get("nitrate_mg_l")
     ph = estimate.values.get("ph")
 
-    chemistry_support = (
+    acute_nitrogen_support = (
         tan is not None
         and policy.tan_watch_above is not None
         and tan >= policy.tan_watch_above
@@ -297,9 +298,14 @@ def decide(
         and policy.nitrite_watch_above is not None
         and nitrite >= policy.nitrite_watch_above
     )
+    nitrate_high = (
+        nitrate is not None
+        and policy.nitrate_watch_above is not None
+        and nitrate >= policy.nitrate_watch_above
+    )
 
-    if (do_value is not None and do_value <= policy.do_watch_below) or chemistry_support:
-        reason = "BIOLOGICAL_LOAD_SUPPORT" if chemistry_support else "LOW_DO_CORRECTION"
+    if (do_value is not None and do_value <= policy.do_watch_below) or acute_nitrogen_support:
+        reason = "BIOLOGICAL_LOAD_SUPPORT" if acute_nitrogen_support else "LOW_DO_CORRECTION"
         intents["backup_aerator"] = CommandIntent(
             "backup_aerator",
             True,
@@ -314,8 +320,8 @@ def decide(
             "DO_RECOVERED",
         )
 
-    if (flow is not None and flow < policy.flow_watch_below) or chemistry_support:
-        reason = "BIOFILTER_FLOW_SUPPORT" if chemistry_support else "LOW_FLOW_BACKUP"
+    if (flow is not None and flow < policy.flow_watch_below) or acute_nitrogen_support:
+        reason = "BIOFILTER_FLOW_SUPPORT" if acute_nitrogen_support else "LOW_FLOW_BACKUP"
         intents["backup_pump"] = CommandIntent(
             "backup_pump",
             True,
@@ -330,13 +336,12 @@ def decide(
             or (policy.ph_watch_above is not None and ph >= policy.ph_watch_above)
         )
     )
-    if chemistry_support or ph_outside:
-        reason = "WATER_QUALITY_FEED_INHIBIT"
+    if acute_nitrogen_support or nitrate_high or ph_outside:
         intents["feeder"] = CommandIntent(
             "feeder",
             False,
             CommandOwner.AUTO,
-            reason,
+            "WATER_QUALITY_FEED_INHIBIT",
         )
 
     if classification.state in {SystemState.EMERGENCY, SystemState.FAILSAFE}:
