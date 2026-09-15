@@ -8,7 +8,9 @@ from smart_koi_pond.control.water_quality import (
     WaterQualityRecoveryManager,
     WaterQualityRecoveryPolicy,
 )
-from smart_koi_pond.control.water_quality_config import WaterQualityThresholdProfile
+from smart_koi_pond.control.water_quality_config import (
+    WaterQualityThresholdProfile,
+)
 from smart_koi_pond.dashboard.app import build_integrated_virtual_runtime
 from smart_koi_pond.dashboard.koi_stock_service import KoiStockRuntimeApplicationService
 from smart_koi_pond.digital_twin.biology import (
@@ -27,9 +29,7 @@ from smart_koi_pond.digital_twin.koi_stock import (
     KoiStockProfile,
     indonesia_juvenile_koi_estimator_v1,
 )
-from smart_koi_pond.digital_twin.koi_stock_model import (
-    KoiStockWaterExchangePondModel,
-)
+from smart_koi_pond.digital_twin.koi_stock_model import KoiStockWaterExchangePondModel
 from smart_koi_pond.digital_twin.model import EnvironmentInputs
 from smart_koi_pond.domain.enums import (
     AvailabilityState,
@@ -156,7 +156,10 @@ def _biological_model(*, inhibited: bool):
         koi_stock=_stock(weight_g=100.0, count=10),
         feeding_policy=_feeding(rate=0.02, meals=4),
     )
-    model.set_water_quality_feed_inhibited(inhibited, "NITRITE_HIGH" if inhibited else None)
+    model.set_water_quality_feed_inhibited(
+        inhibited,
+        "NITRITE_HIGH" if inhibited else None,
+    )
     return model
 
 
