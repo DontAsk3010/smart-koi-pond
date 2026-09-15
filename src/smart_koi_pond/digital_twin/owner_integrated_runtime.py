@@ -315,13 +315,16 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
         if session["stage"] == "BACKWASHING":
             command = snapshot.commands.get("backwash_valve") if snapshot.commands else None
             if command is not None and command.requested_on and not command.accepted:
+                already_discharging = session["effective_backwash_started_at"] is not None
                 self.request_return_to_auto()
                 snapshot = super().tick(0.0)
-                self._finish_owner_backwash(
-                    snapshot,
-                    "HOLD",
-                    f"Backwash tidak dieksekusi: {command.reason}",
+                detail = (
+                    "Backwash berhenti setelah air mulai terbuang dan level belum "
+                    f"dipulihkan: {command.reason}"
+                    if already_discharging
+                    else f"Backwash tidak dieksekusi: {command.reason}"
                 )
+                self._finish_owner_backwash(snapshot, "HOLD", detail)
                 return snapshot
             valve = snapshot.assets.get("backwash_valve")
             if valve is not None and valve.feedback_on:
