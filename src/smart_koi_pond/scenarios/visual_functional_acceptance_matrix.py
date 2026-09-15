@@ -485,16 +485,35 @@ def _low_do_case() -> dict[str, Any]:
 
 
 def _pump_failure_case() -> dict[str, Any]:
-    # This uses the same integrated runtime plus the same governed setup used by the
-    # other families so flow monitoring and backup circulation are explicitly configured.
     runtime, service = _service()
-    start_sequence = runtime.events.events[-1].sequence
+
+    # Establish the required clean takeover precondition through governed commands:
+    # backup circulation is explicitly OFF, primary circulation remains ON, and AUTO
+    # ownership is restored before the fault is injected.
     service.command(
+        "start_manual_maintenance",
+        {"scope": ["backup_pump"], "reason": "ACCEPTANCE_PRECONDITION_BACKUP_OFF"},
+        role="engineering",
+    )
+    service.command(
+        "manual_command",
+        {"asset_id": "backup_pump", "on": False, "reason": "ACCEPTANCE_PRECONDITION_BACKUP_OFF"},
+        role="engineering",
+    )
+    service.command("return_to_auto", {}, role="operator")
+    baseline = service.step(1.0)
+    baseline_backup_off = (
+        baseline.assets["main_pump"].feedback_on
+        and not baseline.assets["backup_pump"].feedback_on
+        and baseline.estimate.values.get("circulation_flow_l_min") == 100.0
+    )
+
+    start_sequence = runtime.events.events[-1].sequence
+    disturbed = service.command(
         "inject_actuator_fault",
         {"asset_id": "main_pump", "mode": "failed_off"},
         role="engineering",
     )
-    disturbed = service.step(30.0)
     verified = service.step(130.0)
     service.command("clear_actuator_fault", {"asset_id": "main_pump"}, role="engineering")
     service.step(1.0)
@@ -505,12 +524,13 @@ def _pump_failure_case() -> dict[str, Any]:
     return _case(
         case_id="F_MAIN_PUMP_FAILURE",
         family="F — Main pump / circulation failure",
-        title="Main pump failed-off → backup circulation → flow verification → repair",
+        title="Main pump failed-off → backup circulation takeover → flow verification → repair",
         checks={
+            "clean_takeover_precondition": baseline_backup_off,
             "fault_visible": disturbed.assets["main_pump"].availability.value == "FAILED"
             and not disturbed.assets["main_pump"].feedback_on,
-            "low_flow_or_degraded_state": "FLOW_LOW" in disturbed.classification.reasons
-            or disturbed.classification.state.value in {"DEGRADED", "FAILSAFE", "CORRECTING"},
+            "flow_low_at_fault": disturbed.estimate.values.get("circulation_flow_l_min") == 0.0
+            and "FLOW_LOW" in disturbed.classification.reasons,
             "backup_command_accepted": command is not None and command.accepted and command.final_on,
             "backup_feedback_on": disturbed.feedback.get("backup_pump") is not None
             and disturbed.feedback["backup_pump"].feedback_on,
@@ -519,6 +539,11 @@ def _pump_failure_case() -> dict[str, Any]:
             "incident_resolved_after_repair": _resolved_incident(recovered),
         },
         evidence={
+            "baseline": {
+                "main_pump_feedback_on": baseline.assets["main_pump"].feedback_on,
+                "backup_pump_feedback_on": baseline.assets["backup_pump"].feedback_on,
+                "circulation_flow_l_min": baseline.estimate.values.get("circulation_flow_l_min"),
+            },
             "condition": {"main_pump_fault": "failed_off"},
             "classification": _wire(disturbed.classification),
             "asset_state": _wire(disturbed.assets["main_pump"]),
