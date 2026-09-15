@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from smart_koi_pond.digital_twin.hydraulics import EngineeringProvenance
-from smart_koi_pond.digital_twin.model import PondModel
+from .hydraulics import EngineeringProvenance
+from .model import PondModel
 
 
 SOURCE_WATER_QUALIFICATION_INPUT_REQUIRED = "INPUT_REQUIRED"
