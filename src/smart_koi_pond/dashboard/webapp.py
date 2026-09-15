@@ -30,6 +30,10 @@ from smart_koi_pond.dashboard.integrated_virtual_pond_ui import (
     INTEGRATED_VIRTUAL_POND_STYLE,
 )
 from smart_koi_pond.dashboard.modular_ui import MODULAR_UI_SCRIPT
+from smart_koi_pond.dashboard.owner_operational_cockpit_ui import (
+    OWNER_OPERATIONAL_COCKPIT_SCRIPT,
+    OWNER_OPERATIONAL_COCKPIT_STYLE,
+)
 from smart_koi_pond.dashboard.reference_profile_ui import REFERENCE_PROFILE_UI_SCRIPT
 from smart_koi_pond.dashboard.service import RuntimeApplicationService
 from smart_koi_pond.dashboard.sidebar_navigation_ui import (
@@ -58,7 +62,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{INCIDENT_RECOVERY_STORY_STYLE}"
         f"{FILTRATION_BACKWASH_CAUSALITY_STYLE}"
         f"{VIRTUAL_POND_HOME_STYLE}"
-        f"{SIDEBAR_NAVIGATION_STYLE}</head>"
+        f"{SIDEBAR_NAVIGATION_STYLE}"
+        f"{OWNER_OPERATIONAL_COCKPIT_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -76,7 +81,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{INCIDENT_RECOVERY_STORY_SCRIPT}</script>"
         f"<script>{FILTRATION_BACKWASH_CAUSALITY_SCRIPT}</script>"
         f"<script>{VIRTUAL_POND_HOME_SCRIPT}</script>"
-        f"<script>{SIDEBAR_NAVIGATION_SCRIPT}</script></body>"
+        f"<script>{SIDEBAR_NAVIGATION_SCRIPT}</script>"
+        f"<script>{OWNER_OPERATIONAL_COCKPIT_SCRIPT}</script></body>"
     ),
 )
 
