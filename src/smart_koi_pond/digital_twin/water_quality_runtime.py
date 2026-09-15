@@ -8,6 +8,7 @@ from smart_koi_pond.control.water_quality import (
     WaterQualityRecoveryManager,
     WaterQualityRecoveryPolicy,
 )
+from smart_koi_pond.digital_twin.koi_stock import FeedingPolicy, KoiStockProfile
 from smart_koi_pond.digital_twin.source_water_runtime import (
     SourceWaterQualifiedProductionRuntime,
 )
@@ -31,6 +32,80 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
         super().__init__(*args, **kwargs)
         self.water_quality_recovery = WaterQualityRecoveryManager(
             water_quality_recovery_policy
+        )
+
+    def configure_koi_stock_profile(
+        self,
+        profile: KoiStockProfile,
+        *,
+        actor: str = "engineering",
+    ) -> None:
+        configure = getattr(self.model, "configure_koi_stock_profile", None)
+        if configure is None:
+            raise RuntimeError("runtime model does not support koi-stock configuration")
+        before_fn = getattr(self.model, "koi_stock_snapshot", None)
+        before = before_fn() if before_fn is not None else {"configured": False}
+        self._apply_governed_configuration(
+            scope="KOI_STOCK_PROFILE",
+            actor=actor,
+            reason="KOI_STOCK_PROFILE_CHANGE",
+            before=before,
+            after=profile.to_dict(),
+            preflight=lambda: (),
+            apply=lambda: configure(profile),
+        )
+        after = self.model.koi_stock_snapshot()
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "KOI_STOCK_BIOMASS_RECALCULATED",
+            {
+                "actor": actor,
+                "profile_id": profile.profile_id,
+                "revision": profile.revision,
+                "total_count": after.get("total_count"),
+                "biomass_kg": after.get("biomass_kg"),
+                "status": after.get("status"),
+                "unresolved_groups": after.get("unresolved_groups", []),
+                "estimator_extrapolation_allowed": False,
+            },
+        )
+
+    def configure_feeding_policy(
+        self,
+        policy: FeedingPolicy,
+        *,
+        actor: str = "engineering",
+    ) -> None:
+        configure = getattr(self.model, "configure_feeding_policy", None)
+        if configure is None:
+            raise RuntimeError("runtime model does not support feeding-policy configuration")
+        before_fn = getattr(self.model, "feeding_plan_snapshot", None)
+        before = before_fn() if before_fn is not None else {"configured": False}
+        self._apply_governed_configuration(
+            scope="FEEDING_POLICY",
+            actor=actor,
+            reason="FEEDING_POLICY_CHANGE",
+            before=before,
+            after=policy.to_dict(),
+            preflight=lambda: (),
+            apply=lambda: configure(policy),
+        )
+        after = self.model.feeding_plan_snapshot()
+        self.events.append(
+            self.clock.current,
+            EventType.CONFIGURATION,
+            "FEEDING_PLAN_RECALCULATED",
+            {
+                "actor": actor,
+                "policy_id": policy.policy_id,
+                "revision": policy.revision,
+                "status": after.get("status"),
+                "planned_feed_kg_per_day": after.get("planned_feed_kg_per_day"),
+                "planned_feed_per_meal_g": after.get("planned_feed_per_meal_g"),
+                "meals_per_day": after.get("meals_per_day"),
+                "verified_mass_dispense_claimed": False,
+            },
         )
 
     def _source_water_snapshot_for_recovery(self) -> dict[str, Any]:
@@ -96,6 +171,7 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
         snapshot = super().tick(seconds)
         self._apply_feed_inhibit_for_next_step(snapshot)
         recovery_changed = self._process_water_quality_recovery(snapshot)
+        snapshot.biology = self.model.biological_snapshot()
         snapshot.water_recovery = dict(snapshot.water_recovery)
         snapshot.water_recovery["water_quality"] = self.water_quality_recovery.status()
         if recovery_changed:
@@ -125,6 +201,10 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
         manager.last_outcome = saved.get("last_outcome")
         manager.last_reason = saved.get("last_reason")
         manager.lockout_reason = saved.get("lockout_reason")
+        last_finished = saved.get("last_finished_at")
+        manager.last_finished_at = (
+            datetime.fromisoformat(str(last_finished)) if last_finished else None
+        )
         active = saved.get("active")
         if active:
             manager.active = WaterQualityRecoveryAttempt(
@@ -141,9 +221,11 @@ class WaterQualityRegulatingProductionRuntime(SourceWaterQualifiedProductionRunt
             manager.active = None
 
     def publish(self, snapshot, *, after_sequence: int = 0):
+        snapshot.biology = self.model.biological_snapshot()
         snapshot.water_recovery = dict(snapshot.water_recovery)
         snapshot.water_recovery["water_quality"] = self.water_quality_recovery.status()
         publication = super().publish(snapshot, after_sequence=after_sequence)
         publication["water_quality_recovery_schema_version"] = 1
+        publication["koi_stock_feeding_schema_version"] = 1
         publication["automatic_chemical_dosing_authorized"] = False
         return publication
