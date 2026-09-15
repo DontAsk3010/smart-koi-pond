@@ -26,7 +26,10 @@ GOVERNANCE_STATUS_SCRIPT = r"""
   window.assetHtml=truthfulAssetHtml;
   window.updateAssets=function(s){
     const box=document.getElementById('overviewAssets');if(box){box.innerHTML='';Object.entries(s.assets||{}).forEach(([id,a])=>{const d=document.createElement('div');d.className='asset';d.innerHTML=`<div class="name">${safe(id)}</div>${truthfulAssetHtml(a)}`;box.appendChild(d)})}
-    document.querySelectorAll('[data-asset]').forEach(n=>{const id=n.dataset.asset;n.innerHTML=`${safe(id.replaceAll('_',' '))}<br>${truthfulAssetHtml(s.assets?.[id])}`});
+    // Only Mini-SCADA process nodes own replaceable asset markup. Animated pond
+    // equipment chips also carry asset identity for drill-down, but their nested
+    // renderer DOM (<small>, labels, etc.) must never be replaced here.
+    document.querySelectorAll('#processGrid [data-asset]').forEach(n=>{const id=n.dataset.asset;n.innerHTML=`${safe(id.replaceAll('_',' '))}<br>${truthfulAssetHtml(s.assets?.[id])}`});
   };
   function installGovernanceStatus(){
     if(document.getElementById('governanceStatusCard'))return;
@@ -46,7 +49,7 @@ GOVERNANCE_STATUS_SCRIPT = r"""
   function renderGovernanceStatus(s){
     installGovernanceStatus();if(!s)return;
     const cfg=s.configuration_control||{},tx=cfg.last_transaction||null,upd=cfg.software_update||null,rec=s.recovery_control||{},active=rec.active||null,last=rec.last_completed||null;
-    const playback=(typeof playbackMode!=='undefined'&&playbackMode);document.getElementById('govSource').textContent=playback?'HISTORIAN FRAME / READ ONLY · canonical point-in-time governance state':'LIVE CANONICAL SNAPSHOT · governance state is runtime-published';
+    const playback=(typeof playbackMode!=='undefined'&&playbackMode);const govSource=document.getElementById('govSource');if(govSource)govSource.textContent=playback?'HISTORIAN FRAME / READ ONLY · canonical point-in-time governance state':'LIVE CANONICAL SNAPSHOT · governance state is runtime-published';
     const cfgMismatch=cfg.active_configuration_version&&cfg.last_good_configuration_version&&cfg.active_configuration_version!==cfg.last_good_configuration_version;
     cell('govConfig',cfgMismatch?'gov-warn':'gov-good',`Active ${safe(cfg.active_configuration_version)}<br>LAST_GOOD ${safe(cfg.last_good_configuration_version)}<br>partial active: ${safe(cfg.partial_configuration_active)}`);
     const updateState=upd?.state||'NO_STAGED_UPDATE',updateBad=['ROLLED_BACK','HOLD','REJECTED'].includes(updateState),updateWarn=['STAGED','ACTIVATING','VERIFYING','ROLLING_BACK'].includes(updateState);
@@ -55,7 +58,7 @@ GOVERNANCE_STATUS_SCRIPT = r"""
     cell('govTransaction',txBad?'gov-bad':(txWarn?'gov-warn':'gov-good'),tx?`${safe(txState)} · ${safe(tx.scope)}<br>${safe(tx.transaction_id)}<br>verify ${safe(tx.verification_result)} · rollback ${safe(tx.rollback_result)}`:'No configuration transaction published');
     const record=active||last,state=record?.state||(active?'UNKNOWN':'IDLE'),recBad=['LOCKED_OUT','ESCALATED'].includes(state),recWarn=!!active&&!['RECOVERED'].includes(state);
     cell('govRecovery',recBad?'gov-bad':(recWarn?'gov-warn':'gov-good'),record?`${safe(state)} · ${safe(record.plan_id)} r${safe(record.plan_revision)}<br>attempt ${safe(record.attempt_count)} / ${safe(rec.retry_limit)} · action ${safe(record.current_action)}<br>verify ${safe(record.verification_result)} · fallback ${safe(record.fallback_active)} · escalated ${safe(record.escalated)}`:'IDLE · no recovery record');
-    const story=document.getElementById('govStory');const source=active?'ACTIVE RECOVERY':(last?'LAST COMPLETED RECOVERY':'RECOVERY IDLE');story.className=`gov-story ${recBad?'bad':(recWarn?'warn':'')}`;story.innerHTML=record?`<b>${safe(source)}:</b> ${safe(record.reason)} · affected ${safe((record.affected_assets||[]).join(', ')||'UNAVAILABLE')} · state ${safe(state)} · next eligible ${safe(record.next_eligible_at)}.`:'Recovery supervisor reports no active/completed recovery record.';
+    const story=document.getElementById('govStory');const source=active?'ACTIVE RECOVERY':(last?'LAST COMPLETED RECOVERY':'RECOVERY IDLE');if(story){story.className=`gov-story ${recBad?'bad':(recWarn?'warn':'')}`;story.innerHTML=record?`<b>${safe(source)}:</b> ${safe(record.reason)} · affected ${safe((record.affected_assets||[]).join(', ')||'UNAVAILABLE')} · state ${safe(state)} · next eligible ${safe(record.next_eligible_at)}.`:'Recovery supervisor reports no active/completed recovery record.';}
   }
   installGovernanceStatus();
   const baseRenderSnapshot=window.renderSnapshot;
