@@ -40,7 +40,6 @@ from smart_koi_pond.domain.enums import (
 from smart_koi_pond.domain.models import Classification, PondState, StateEstimate
 from smart_koi_pond.sensors.real import BufferedRealSensorSuite
 
-
 NOW = datetime(2026, 9, 15, tzinfo=UTC)
 
 
