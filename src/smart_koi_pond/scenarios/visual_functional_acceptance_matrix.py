@@ -11,10 +11,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from smart_koi_pond.control.water_quality_config import koi_freshwater_health_reference_v1
+from smart_koi_pond.control.water_quality_config import (
+    koi_freshwater_health_reference_v1,
+)
 from smart_koi_pond.dashboard.app import build_integrated_virtual_runtime
 from smart_koi_pond.dashboard.koi_stock_service import KoiStockRuntimeApplicationService
-from smart_koi_pond.digital_twin.hydraulics import HydraulicRouteRole, HydraulicRouteSpec, PondDesignProfile
+from smart_koi_pond.digital_twin.hydraulics import (
+    HydraulicRouteRole,
+    HydraulicRouteSpec,
+    PondDesignProfile,
+)
 from smart_koi_pond.digital_twin.water_exchange import SourceWaterProfile
 
 MATRIX_NAME = "SMART_KOI_POND_VISUAL_FUNCTIONAL_ACCEPTANCE_EVIDENCE_V1"
@@ -479,11 +485,9 @@ def _low_do_case() -> dict[str, Any]:
 
 
 def _pump_failure_case() -> dict[str, Any]:
-    # Keep this journey on the pristine integrated runtime so the takeover starts with
-    # main circulation ON and backup circulation OFF. The fault itself still enters
-    # through the authorized engineering scenario command boundary.
-    runtime = build_integrated_virtual_runtime()
-    service = KoiStockRuntimeApplicationService(runtime)
+    # This uses the same integrated runtime plus the same governed setup used by the
+    # other families so flow monitoring and backup circulation are explicitly configured.
+    runtime, service = _service()
     start_sequence = runtime.events.events[-1].sequence
     service.command(
         "inject_actuator_fault",
