@@ -26,7 +26,7 @@ class CirculationVisualState:
     primary: VisualAssetPath
     backup: VisualAssetPath
     active_route_ids: tuple[str, ...]
-    modeled_route_flows_l_min: dict[str, float]
+    modeled_route_flows_l_min: dict[str, float | None]
     route_flow_provenance: str
 
 
@@ -202,7 +202,7 @@ def _asset_path(
 
 def _hydraulic_projection(
     snapshot: RuntimeSnapshot | Mapping[str, Any],
-) -> tuple[dict[str, float], str, tuple[str, ...]]:
+) -> tuple[dict[str, float | None], str, tuple[str, ...]]:
     hydraulics = _get(snapshot, "hydraulics", {}) or {}
     modeled = bool(_get(hydraulics, "per_route_flow_modeled", False))
     routes = _get(hydraulics, "routes", {}) or {}
@@ -210,9 +210,9 @@ def _hydraulic_projection(
         return {}, "UNAVAILABLE", ("NO_PER_ROUTE_FLOW_METERING",)
 
     route_flows = {
-        str(route_id): max(
-            0.0,
-            _number(_get(route_state, "effective_flow_l_min", 0.0)),
+        str(route_id): _bounded_optional_number(
+            _get(route_state, "effective_flow_l_min"),
+            low=0.0,
         )
         for route_id, route_state in routes.items()
     }
@@ -220,11 +220,10 @@ def _hydraulic_projection(
         _get(hydraulics, "profile_provenance"),
         "MODELED",
     )
-    return (
-        route_flows,
-        provenance,
-        ("PER_ROUTE_FLOW_MODELED_NOT_PHYSICALLY_METERED",),
-    )
+    limitations = ["PER_ROUTE_FLOW_MODELED_NOT_PHYSICALLY_METERED"]
+    if any(flow is None for flow in route_flows.values()):
+        limitations.append("MODELED_ROUTE_FLOW_VALUE_UNAVAILABLE")
+    return route_flows, provenance, tuple(limitations)
 
 
 def _filtration_projection(
