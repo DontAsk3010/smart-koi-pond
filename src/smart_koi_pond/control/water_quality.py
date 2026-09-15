@@ -29,7 +29,9 @@ class WaterQualityRecoveryPolicy:
     def __post_init__(self) -> None:
         if self.enabled:
             if self.exchange_fraction_pct is None:
-                raise ValueError("exchange_fraction_pct is required when recovery is enabled")
+                raise ValueError(
+                    "exchange_fraction_pct is required when recovery is enabled"
+                )
             if not 0 < self.exchange_fraction_pct <= 30.0:
                 raise ValueError("exchange_fraction_pct must be >0 and <=30")
         if self.max_attempts <= 0:
@@ -143,11 +145,20 @@ class WaterQualityRecoveryManager:
 
     def _recovered(self, parameter: str, value: float) -> bool:
         if parameter == "total_ammonia_nitrogen_mg_l":
-            return self.policy.tan_recover_below is not None and value < self.policy.tan_recover_below
+            return (
+                self.policy.tan_recover_below is not None
+                and value < self.policy.tan_recover_below
+            )
         if parameter == "nitrite_mg_l":
-            return self.policy.nitrite_recover_below is not None and value < self.policy.nitrite_recover_below
+            return (
+                self.policy.nitrite_recover_below is not None
+                and value < self.policy.nitrite_recover_below
+            )
         if parameter == "nitrate_mg_l":
-            return self.policy.nitrate_recover_below is not None and value < self.policy.nitrate_recover_below
+            return (
+                self.policy.nitrate_recover_below is not None
+                and value < self.policy.nitrate_recover_below
+            )
         if parameter == "ph":
             return (
                 self.policy.ph_recover_low is not None
@@ -162,7 +173,10 @@ class WaterQualityRecoveryManager:
             if snapshot.operating_mode == OperatingMode.WATER_CHANGE:
                 self.active.workflow_seen_active = True
                 return None
-            if self.active.workflow_seen_active and snapshot.operating_mode == OperatingMode.NORMAL_AUTO:
+            if (
+                self.active.workflow_seen_active
+                and snapshot.operating_mode == OperatingMode.NORMAL_AUTO
+            ):
                 value = snapshot.estimate.values.get(self.active.parameter)
                 if value is None:
                     self.last_outcome = "INSUFFICIENT_EVIDENCE"
@@ -184,7 +198,12 @@ class WaterQualityRecoveryManager:
             return None
         if snapshot.operating_mode != OperatingMode.NORMAL_AUTO:
             return None
-        if self.last_finished_at is not None and now < self.last_finished_at + timedelta(seconds=self.policy.cooldown_seconds):
+        if (
+            self.last_finished_at is not None
+            and now
+            < self.last_finished_at
+            + timedelta(seconds=self.policy.cooldown_seconds)
+        ):
             return None
         abnormal = self._active_reason(snapshot)
         if abnormal is None:
@@ -256,7 +275,9 @@ class WaterQualityRecoveryManager:
             ),
             "attempt_counts": dict(self.attempt_counts),
             "last_finished_at": (
-                self.last_finished_at.isoformat() if self.last_finished_at is not None else None
+                self.last_finished_at.isoformat()
+                if self.last_finished_at is not None
+                else None
             ),
             "last_outcome": self.last_outcome,
             "last_reason": self.last_reason,
