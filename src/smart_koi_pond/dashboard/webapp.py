@@ -7,6 +7,10 @@ from smart_koi_pond.dashboard.animated_pond_ui import (
     ANIMATED_POND_SCRIPT,
     ANIMATED_POND_STYLE,
 )
+from smart_koi_pond.dashboard.browser_3d_pond_ui import (
+    BROWSER_3D_POND_SCRIPT,
+    BROWSER_3D_POND_STYLE,
+)
 from smart_koi_pond.dashboard.equipment_detail_ui import (
     EQUIPMENT_DETAIL_SCRIPT,
     EQUIPMENT_DETAIL_STYLE,
@@ -68,7 +72,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"{VIRTUAL_POND_HOME_STYLE}"
         f"{SIDEBAR_NAVIGATION_STYLE}"
         f"{OWNER_OPERATIONAL_COCKPIT_STYLE}"
-        f"{OWNER_COCKPIT_MOTION_GUARD_STYLE}</head>"
+        f"{OWNER_COCKPIT_MOTION_GUARD_STYLE}"
+        f"{BROWSER_3D_POND_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -88,7 +93,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{VIRTUAL_POND_HOME_SCRIPT}</script>"
         f"<script>{SIDEBAR_NAVIGATION_SCRIPT}</script>"
         f"<script>{OWNER_OPERATIONAL_COCKPIT_SCRIPT}</script>"
-        f"<script>{OWNER_COCKPIT_MOTION_GUARD_SCRIPT}</script></body>"
+        f"<script>{OWNER_COCKPIT_MOTION_GUARD_SCRIPT}</script>"
+        f"<script>{BROWSER_3D_POND_SCRIPT}</script></body>"
     ),
 )
 
