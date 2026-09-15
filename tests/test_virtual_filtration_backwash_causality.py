@@ -121,15 +121,18 @@ def test_causal_view_never_equates_valve_command_with_cleaning_success() -> None
         assert forbidden not in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
 
 
-def test_mechanical_process_evidence_survives_publication_and_playback() -> None:
+def test_mechanical_process_evidence_survives_governed_backwash_and_playback() -> None:
     service = _service()
     service.step(3600.0)
     before = service.publication()["snapshot"]["hydraulics"]["mechanical_filtration"]
     assert before["captured_solids_g"] > 0.0
     assert before["process_throughput_factor"] < 1.0
 
-    service.runtime.actuators.assets["backwash_valve"].feedback_on = True
-    service.runtime._last_feedback = service.runtime.actuators.feedback_map()
+    service.command(
+        "start_filter_clean",
+        {"service_scope": [], "reason": "CAUSAL_VIEW_ACCEPTANCE"},
+        role="engineering",
+    )
     service.step(60.0)
     publication = service.publication()["snapshot"]
     filtration = publication["hydraulics"]["mechanical_filtration"]
