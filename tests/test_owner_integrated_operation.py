@@ -132,9 +132,14 @@ def test_integrated_backwash_reduces_water_then_qualified_refill_restores_and_ch
     assert final.pond_truth.water_level_pct == pytest.approx(start_level)
     assert final.pond_truth.nitrate_mg_l < start_nitrate
     assert final.pond_truth.ph != pytest.approx(start_ph)
+
+    journey = owner["backwash_restore_last"]["integrated_water_journey"]
+    assert journey["backwash_discharge_l"] > 0.0
+    assert journey["refill_l"] > 0.0
+    assert journey["source_water_mixing_applied"] is True
+    assert journey["chemistry_before_after"]["nitrate_mg_l"]["after"] < start_nitrate
+
     exchange = final.hydraulics["water_exchange"]["last_exchange"]
-    assert exchange["discharge_breakdown_l"]["backwash"] > 0.0
-    assert exchange["refill_l"] > 0.0
     assert exchange["parameter_results"]["nitrate_mg_l"]["status"] == "CALCULATED_CONSERVED_MASS_MIXING"
     assert exchange["parameter_results"]["ph"]["status"] == "MODELED_SIMPLIFIED_BUFFER_WEIGHTED_H_ACTIVITY"
 
