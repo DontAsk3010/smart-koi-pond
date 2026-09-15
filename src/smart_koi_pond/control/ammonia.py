@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
+import math
 
 
 UNIONIZED_AMMONIA_N_PARAMETER = "unionized_ammonia_n_mg_l"
