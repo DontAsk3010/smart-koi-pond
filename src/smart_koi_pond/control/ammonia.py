@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-
 UNIONIZED_AMMONIA_N_PARAMETER = "unionized_ammonia_n_mg_l"
 UNIONIZED_AMMONIA_PARAMETER = "unionized_ammonia_nh3_mg_l"
 UNIONIZED_AMMONIA_FORMULA_ID = "EPA_EMERSON_FRESHWATER_NH3_FRACTION_V1"
