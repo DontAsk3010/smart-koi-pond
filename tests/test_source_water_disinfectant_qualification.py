@@ -168,6 +168,52 @@ def test_low_water_auto_top_up_never_energizes_with_unqualified_source() -> None
     )
 
 
+def test_unqualified_transition_forces_already_open_top_up_to_safe_off() -> None:
+    runtime = build_integrated_virtual_runtime()
+    runtime.model.configure_source_water_profile(qualified_source())
+    runtime.start_manual_maintenance(
+        ["top_up_valve"],
+        "SOURCE_WATER_SAFETY_OFF_REGRESSION",
+    )
+
+    opened, open_feedback = runtime.manual_command(
+        "top_up_valve",
+        True,
+        "QUALIFIED_MANUAL_TOP_UP",
+    )
+    assert opened.accepted is True
+    assert open_feedback.feedback_on is True
+
+    runtime.model.configure_source_water_profile(
+        SourceWaterProfile(
+            profile_id="qualified-source",
+            revision="r2",
+            source_reference="new-unqualified-source-evidence",
+            source_type="MUNICIPAL_TAP",
+            pond_use_qualification=SOURCE_WATER_QUALIFICATION_NOT_QUALIFIED,
+        )
+    )
+    inhibited, feedback = runtime.manual_command(
+        "top_up_valve",
+        True,
+        "MUST_NOT_CONTINUE_AFTER_QUALIFICATION_LOSS",
+    )
+
+    assert inhibited.requested_on is True
+    assert inhibited.accepted is False
+    assert inhibited.final_on is False
+    assert inhibited.reason.startswith("SOURCE_WATER_NOT_QUALIFIED")
+    assert feedback.feedback_on is False
+    assert runtime.actuators.assets["top_up_valve"].feedback_on is False
+    event = next(
+        event
+        for event in reversed(runtime.events.events)
+        if event.code == "SOURCE_WATER_TOP_UP_INHIBITED"
+    )
+    assert event.payload["was_on_before_safety_off"] is True
+    assert event.payload["feedback_on_after_safety_off"] is False
+
+
 def test_source_water_qualification_survives_checkpoint_history_and_playback() -> None:
     runtime = build_integrated_virtual_runtime()
     runtime.model.configure_source_water_profile(qualified_source())
