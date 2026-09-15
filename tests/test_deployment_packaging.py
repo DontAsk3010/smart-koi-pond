@@ -12,7 +12,8 @@ def test_container_package_is_non_root_persistent_and_loopback_default() -> None
     assert "SMART_KOI_HISTORIAN_PATH=/var/lib/smart-koi-pond/historian.jsonl" in dockerfile
     assert "USER smartkoi" in dockerfile
     assert 'VOLUME ["/var/lib/smart-koi-pond"]' in dockerfile
-    assert "http://127.0.0.1:8080/api/health" in dockerfile
+    assert "os.environ.get('SMART_KOI_PORT', '8080')" in dockerfile
+    assert "'http://127.0.0.1:' + port + '/api/health'" in dockerfile
     assert "ENV SMART_KOI_HOST=0.0.0.0" not in dockerfile
 
     ignored = set(dockerignore.splitlines())
@@ -30,9 +31,12 @@ def test_deployment_smoke_is_loopback_only_and_simulation_gated() -> None:
         encoding="utf-8"
     )
 
-    assert "-p 127.0.0.1:18080:8080" in workflow
+    assert "SMART_KOI_PORT=18081" in workflow
+    assert "-p 127.0.0.1:18080:18081" in workflow
     assert "SMART_KOI_HOST=0.0.0.0" in workflow
+    assert "State.Health.Status" in workflow
     assert 'payload["execution_mode"] == "SIMULATION"' in workflow
+    assert 'payload["baseline_status"] == "BASELINE_NOT_MET"' in workflow
     assert "do **not** expose the application server directly to the public Internet" in guide
     assert "SIMULATION / NO REAL DEVICE CONTROL" in guide
     assert "Site Integration & Commissioning" in guide
