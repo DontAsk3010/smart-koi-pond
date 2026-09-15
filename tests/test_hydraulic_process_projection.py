@@ -14,6 +14,7 @@ from smart_koi_pond.digital_twin.hydraulics import (
 from smart_koi_pond.digital_twin.model import EnvironmentInputs, PondModel
 from smart_koi_pond.digital_twin.runtime import DigitalTwinRuntime
 from smart_koi_pond.domain.models import PondState
+from smart_koi_pond.domain.process_visual import project_process_visual
 
 POLICY = SimulationControlPolicy(
     do_watch_below=5.0,
@@ -64,3 +65,29 @@ def test_modeled_route_flow_reaches_canonical_process_projection() -> None:
     assert circulation["route_flow_provenance"] == "USER_CONFIGURED_SCENARIO"
     assert "PER_ROUTE_FLOW_MODELED_NOT_PHYSICALLY_METERED" in process["limitations"]
     assert "NO_PER_ROUTE_FLOW_METERING" not in process["limitations"]
+
+
+def test_missing_modeled_route_flow_remains_unavailable_not_false_zero() -> None:
+    state = project_process_visual(
+        {
+            "run_id": "missing-route-flow-test",
+            "classification": {"state": "UNKNOWN"},
+            "operating_mode": "NORMAL_AUTO",
+            "operating_status": {"phase": "ACTIVE"},
+            "pond_truth": {
+                "circulation_flow_l_min": None,
+                "dissolved_oxygen_mg_l": 6.0,
+                "water_level_pct": 85.0,
+            },
+            "assets": {},
+            "verification": [],
+            "hydraulics": {
+                "per_route_flow_modeled": True,
+                "profile_provenance": "USER_CONFIGURED_SCENARIO",
+                "routes": {"main-route": {"effective_flow_l_min": None}},
+            },
+        }
+    )
+
+    assert state.circulation.modeled_route_flows_l_min["main-route"] is None
+    assert "MODELED_ROUTE_FLOW_VALUE_UNAVAILABLE" in state.limitations
