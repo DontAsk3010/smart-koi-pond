@@ -1,0 +1,98 @@
+name: Deployment Package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build vendor-neutral container package
+        run: docker build -t smart-koi-pond:ci .
+
+      - name: Start SIMULATION container on runner loopback only
+        run: >-
+          docker run -d
+          --name smart-koi-pond-ci
+          --health-interval=1s
+          --health-timeout=2s
+          --health-start-period=1s
+          --health-retries=5
+          -e SMART_KOI_HOST=0.0.0.0
+          -e SMART_KOI_PORT=18081
+          -e SMART_KOI_HISTORIAN_PATH=/var/lib/smart-koi-pond/historian.jsonl
+          -p 127.0.0.1:18080:18081
+          smart-koi-pond:ci
+
+      - name: Verify canonical deployment health and authority boundary
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          base_url = "http://127.0.0.1:18080"
+          payload = None
+          last_error = None
+          for _ in range(30):
+              try:
+                  with urllib.request.urlopen(f"{base_url}/api/health", timeout=2) as response:
+                      payload = json.load(response)
+                  break
+              except (OSError, urllib.error.URLError) as exc:
+                  last_error = exc
+                  time.sleep(1)
+
+          if payload is None:
+              raise SystemExit(f"deployment health endpoint unavailable: {last_error}")
+
+          assert payload["status"] == "ok", payload
+          assert payload["execution_mode"] == "SIMULATION", payload
+          assert payload["baseline_status"] == "BASELINE_NOT_MET", payload
+          assert payload["run_id"], payload
+
+          with urllib.request.urlopen(f"{base_url}/", timeout=2) as response:
+              html = response.read().decode("utf-8")
+          assert "SIMULATION" in html
+          assert "NO REAL DEVICE CONTROL" in html
+          assert "INPUT REQUIRED" in html
+
+          print(json.dumps(payload, sort_keys=True))
+          PY
+
+      - name: Verify image healthcheck follows SMART_KOI_PORT
+        run: |
+          for _ in $(seq 1 20); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' smart-koi-pond-ci)"
+            if [ "$status" = "healthy" ]; then
+              echo "container health=$status"
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              docker inspect --format '{{json .State.Health}}' smart-koi-pond-ci
+              exit 1
+            fi
+            sleep 1
+          done
+          docker inspect --format '{{json .State.Health}}' smart-koi-pond-ci
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs smart-koi-pond-ci || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f smart-koi-pond-ci || true
