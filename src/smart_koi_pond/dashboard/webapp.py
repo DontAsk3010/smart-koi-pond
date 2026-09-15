@@ -7,6 +7,10 @@ from smart_koi_pond.dashboard.animated_pond_ui import (
     ANIMATED_POND_SCRIPT,
     ANIMATED_POND_STYLE,
 )
+from smart_koi_pond.dashboard.equipment_detail_ui import (
+    EQUIPMENT_DETAIL_SCRIPT,
+    EQUIPMENT_DETAIL_STYLE,
+)
 from smart_koi_pond.dashboard.fault_controls_ui import FAULT_CONTROLS_UI_SCRIPT
 from smart_koi_pond.dashboard.governance_status_ui import (
     GOVERNANCE_STATUS_SCRIPT,
@@ -28,7 +32,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
     (
         f"{ANIMATED_POND_STYLE}"
         f"{INTEGRATED_VIRTUAL_POND_STYLE}"
-        f"{GOVERNANCE_STATUS_STYLE}</head>"
+        f"{GOVERNANCE_STATUS_STYLE}"
+        f"{EQUIPMENT_DETAIL_STYLE}</head>"
     ),
 ).replace(
     "</body>",
@@ -40,7 +45,8 @@ COMPOSED_INDEX_HTML = INDEX_HTML.replace(
         f"<script>{SOURCE_WATER_UI_SCRIPT}</script>"
         f"<script>{INTEGRATED_CONTROL_UI_SCRIPT}</script>"
         f"<script>{REFERENCE_PROFILE_UI_SCRIPT}</script>"
-        f"<script>{GOVERNANCE_STATUS_SCRIPT}</script></body>"
+        f"<script>{GOVERNANCE_STATUS_SCRIPT}</script>"
+        f"<script>{EQUIPMENT_DETAIL_SCRIPT}</script></body>"
     ),
 )
 
@@ -172,7 +178,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8080,
 ) -> None:
-    server = create_server(service, host=host, port=port)
+    server = create_server(service, host=host, port=port,)
     service.start_background()
     try:
         server.serve_forever()
