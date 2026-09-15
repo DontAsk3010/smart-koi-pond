@@ -5,7 +5,7 @@ from typing import Any
 
 from smart_koi_pond.control.water_management import LowWaterRecoveryManager
 from smart_koi_pond.digital_twin.governed_runtime import ProductionDigitalTwinRuntime
-from smart_koi_pond.domain.enums import EventType
+from smart_koi_pond.domain.enums import CommandOwner, EventType
 from smart_koi_pond.domain.models import ArbitratedCommand, CommandIntent, DeviceFeedback
 
 
@@ -158,6 +158,14 @@ class SourceWaterQualifiedProductionRuntime(ProductionDigitalTwinRuntime):
         if intent.asset_id == self.TOP_UP_ASSET_ID and intent.requested_on:
             qualification = self._source_water_qualification_snapshot()
             if not qualification["pond_use_qualified"]:
+                was_on = bool(self.actuators.assets[intent.asset_id].feedback_on)
+                safety_off = CommandIntent(
+                    asset_id=intent.asset_id,
+                    requested_on=False,
+                    owner=CommandOwner.SAFETY,
+                    reason=f"SOURCE_WATER_SAFETY_OFF:{qualification['state']}",
+                )
+                _, feedback = super()._execute_intent(safety_off, now)
                 command = ArbitratedCommand(
                     asset_id=intent.asset_id,
                     requested_on=True,
@@ -166,7 +174,6 @@ class SourceWaterQualifiedProductionRuntime(ProductionDigitalTwinRuntime):
                     accepted=False,
                     reason=f"SOURCE_WATER_NOT_QUALIFIED:{qualification['state']}",
                 )
-                feedback = self.actuators.execute(command, now)
                 self.events.append(
                     now,
                     EventType.COMMAND,
@@ -177,6 +184,8 @@ class SourceWaterQualifiedProductionRuntime(ProductionDigitalTwinRuntime):
                         "requested_on": True,
                         "accepted": False,
                         "final_on": False,
+                        "was_on_before_safety_off": was_on,
+                        "feedback_on_after_safety_off": feedback.feedback_on,
                         "qualification_state": qualification["state"],
                         "qualification_reference": qualification.get("reference"),
                         "source_type_implies_safe_chemistry": False,
