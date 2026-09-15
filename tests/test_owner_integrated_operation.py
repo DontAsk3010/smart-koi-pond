@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from smart_koi_pond.actuators.virtual import ActuatorFault
 from smart_koi_pond.dashboard.app import build_integrated_virtual_runtime
 from smart_koi_pond.dashboard.owner_integrated_operation_ui import (
     OWNER_INTEGRATED_OPERATION_SCRIPT,
@@ -142,6 +143,53 @@ def test_integrated_backwash_reduces_water_then_qualified_refill_restores_and_ch
     exchange = final.hydraulics["water_exchange"]["last_exchange"]
     assert exchange["parameter_results"]["nitrate_mg_l"]["status"] == "CALCULATED_CONSERVED_MASS_MIXING"
     assert exchange["parameter_results"]["ph"]["status"] == "MODELED_SIMPLIFIED_BUFFER_WEIGHTED_H_ACTIVITY"
+
+
+def test_rejected_backwash_valve_finishes_integrated_workflow_as_hold() -> None:
+    runtime = _configured_runtime(qualified_source=True)
+    runtime.actuators.set_fault("backwash_valve", ActuatorFault("failed_off", None))
+
+    runtime.start_integrated_backwash_restore("REJECTED_BACKWASH_TEST")
+    final = runtime.tick(0.0)
+    owner = final.water_recovery["owner_operation"]
+
+    assert final.operating_mode == OperatingMode.NORMAL_AUTO
+    assert owner["backwash_restore_active"] is None
+    last = owner["backwash_restore_last"]
+    assert last["stage"] == "DITAHAN"
+    assert last["outcome"] == "HOLD"
+    assert "ASSET_NOT_AVAILABLE:FAILED" in last["detail"]
+    assert any(
+        event.code == "INTEGRATED_BACKWASH_RESTORE_FINISHED"
+        and event.payload["outcome"] == "HOLD"
+        for event in runtime.events.events
+    )
+
+
+def test_owner_projection_and_checkpoint_do_not_alias_mutable_backwash_state() -> None:
+    runtime = _configured_runtime(qualified_source=True)
+    runtime.start_integrated_backwash_restore("COPY_ISOLATION_TEST")
+    snapshot = runtime.tick(0.0)
+
+    projected = snapshot.water_recovery["owner_operation"]["backwash_restore_active"]
+    assert projected is not None
+    projected["starting_chemistry"]["ph"] = 99.0
+    assert runtime._owner_backwash_active is not None
+    assert runtime._owner_backwash_active["starting_chemistry"]["ph"] != 99.0
+
+    checkpoint = runtime.capture_checkpoint()
+    captured_stage = checkpoint["owner_backwash_active"]["stage"]
+    captured_ph = checkpoint["owner_backwash_active"]["starting_chemistry"]["ph"]
+
+    runtime.tick(60.0)
+    assert checkpoint["owner_backwash_active"]["stage"] == captured_stage
+    assert checkpoint["owner_backwash_active"]["starting_chemistry"]["ph"] == captured_ph
+
+    restored = _configured_runtime(qualified_source=True)
+    restored.restore_checkpoint(checkpoint)
+    checkpoint["owner_backwash_active"]["starting_chemistry"]["ph"] = 88.0
+    assert restored._owner_backwash_active is not None
+    assert restored._owner_backwash_active["starting_chemistry"]["ph"] == captured_ph
 
 
 def test_unqualified_source_fails_closed_before_integrated_backwash_starts() -> None:
