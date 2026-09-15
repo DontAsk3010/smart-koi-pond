@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
@@ -196,8 +197,8 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
                 if self.backwash_restore_policy is not None
                 else {"configured": False, "status": "INPUT_REQUIRED"}
             ),
-            "backwash_restore_active": dict(self._owner_backwash_active) if self._owner_backwash_active else None,
-            "backwash_restore_last": dict(self._owner_backwash_last) if self._owner_backwash_last else None,
+            "backwash_restore_active": deepcopy(self._owner_backwash_active),
+            "backwash_restore_last": deepcopy(self._owner_backwash_last),
             "owner_advisory": self._owner_advisory(snapshot) if snapshot is not None else [],
         }
 
@@ -273,7 +274,7 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
         self._owner_backwash_active["stage"] = "BACKWASHING"
 
     def _finish_owner_backwash(self, snapshot: Any, outcome: str, detail: str) -> None:
-        session = dict(self._owner_backwash_active or {})
+        session = deepcopy(self._owner_backwash_active or {})
         filtration = (snapshot.hydraulics or {}).get("mechanical_filtration") or {}
         exchange = (snapshot.hydraulics or {}).get("water_exchange") or {}
         session.update(
@@ -284,7 +285,7 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
                 "finished_at": snapshot.timestamp.isoformat(),
                 "final_level_pct": snapshot.pond_truth.water_level_pct,
                 "final_captured_solids_g": filtration.get("captured_solids_g"),
-                "last_exchange": exchange.get("last_exchange"),
+                "last_exchange": deepcopy(exchange.get("last_exchange")),
                 "final_chemistry": {
                     "ph": snapshot.pond_truth.ph,
                     "temperature_c": snapshot.pond_truth.temperature_c,
@@ -312,6 +313,19 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
             return snapshot
 
         if session["stage"] == "BACKWASHING":
+            command = snapshot.commands.get("backwash_valve") if snapshot.commands else None
+            if command is not None and command.requested_on and not command.accepted:
+                already_discharging = session["effective_backwash_started_at"] is not None
+                self.request_return_to_auto()
+                snapshot = super().tick(0.0)
+                detail = (
+                    "Backwash berhenti setelah air mulai terbuang dan level belum "
+                    f"dipulihkan: {command.reason}"
+                    if already_discharging
+                    else f"Backwash tidak dieksekusi: {command.reason}"
+                )
+                self._finish_owner_backwash(snapshot, "HOLD", detail)
+                return snapshot
             valve = snapshot.assets.get("backwash_valve")
             if valve is not None and valve.feedback_on:
                 if session["effective_backwash_started_at"] is None:
@@ -379,13 +393,13 @@ class OwnerIntegratedProductionRuntime(WaterQualityRegulatingProductionRuntime):
         checkpoint["backwash_restore_policy"] = (
             self.backwash_restore_policy.to_dict() if self.backwash_restore_policy else None
         )
-        checkpoint["owner_backwash_active"] = self._owner_backwash_active
-        checkpoint["owner_backwash_last"] = self._owner_backwash_last
+        checkpoint["owner_backwash_active"] = deepcopy(self._owner_backwash_active)
+        checkpoint["owner_backwash_last"] = deepcopy(self._owner_backwash_last)
         return checkpoint
 
     def restore_checkpoint(self, checkpoint) -> None:
         super().restore_checkpoint(checkpoint)
         policy = checkpoint.get("backwash_restore_policy")
         self.backwash_restore_policy = BackwashRestorePolicy.from_dict(policy) if policy else None
-        self._owner_backwash_active = checkpoint.get("owner_backwash_active")
-        self._owner_backwash_last = checkpoint.get("owner_backwash_last")
+        self._owner_backwash_active = deepcopy(checkpoint.get("owner_backwash_active"))
+        self._owner_backwash_last = deepcopy(checkpoint.get("owner_backwash_last"))
