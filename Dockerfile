@@ -24,6 +24,6 @@ VOLUME ["/var/lib/smart-koi-pond"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).read()"
+    CMD ["python", "-c", "import os, urllib.request; port = os.environ.get('SMART_KOI_PORT', '8080'); urllib.request.urlopen('http://127.0.0.1:' + port + '/api/health', timeout=3).read()"]
 
 CMD ["smart-koi-pond-ui"]
