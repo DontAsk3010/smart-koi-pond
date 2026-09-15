@@ -10,6 +10,8 @@ class BufferedRealSensorSuite:
 
     Transport drivers may ingest observations here later. The adapter never reads
     Digital Twin truth and never invents a value for a missing physical sample.
+    Chemistry inputs can therefore come from commissioned online instruments or a
+    separately governed driver/reference workflow without changing control logic.
     """
 
     ADAPTER_ID = "buffered-real-sensor-suite"
@@ -20,6 +22,10 @@ class BufferedRealSensorSuite:
         "ph": "ph",
         "water_level": "water_level_pct",
         "flow": "circulation_flow_l_min",
+        "tan": "total_ammonia_nitrogen_mg_l",
+        "nitrite": "nitrite_mg_l",
+        "nitrate": "nitrate_mg_l",
+        "alkalinity": "alkalinity_mg_l_as_caco3",
     }
     UNIT_MAP = {
         "temperature": "degC",
@@ -28,6 +34,10 @@ class BufferedRealSensorSuite:
         "ph": "pH",
         "water_level": "%",
         "flow": "L/min",
+        "tan": "mg/L",
+        "nitrite": "mg/L",
+        "nitrate": "mg/L",
+        "alkalinity": "mg/L as CaCO3",
     }
 
     def __init__(self, *, device_bindings: dict[str, str] | None = None) -> None:
