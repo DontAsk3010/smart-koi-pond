@@ -1,3 +1,7 @@
+from smart_koi_pond.dashboard.owner_cockpit_motion_guard_ui import (
+    OWNER_COCKPIT_MOTION_GUARD_SCRIPT,
+    OWNER_COCKPIT_MOTION_GUARD_STYLE,
+)
 from smart_koi_pond.dashboard.owner_operational_cockpit_ui import (
     OWNER_OPERATIONAL_COCKPIT_SCRIPT,
     OWNER_OPERATIONAL_COCKPIT_STYLE,
@@ -57,6 +61,13 @@ def test_cockpit_does_not_create_second_transport_or_fake_health_score() -> None
     assert "new WebSocket" not in script
     assert "Pond Health Index" not in script
     assert ">92<" not in script
+
+
+def test_cockpit_motion_freezes_when_canonical_simulation_is_paused() -> None:
+    assert ".oc-scene.motion-paused .oc-waterline" in OWNER_COCKPIT_MOTION_GUARD_STYLE
+    assert ".oc-scene.motion-paused .oc-route.active" in OWNER_COCKPIT_MOTION_GUARD_STYLE
+    assert "!!snapshot?.simulation_paused" in OWNER_COCKPIT_MOTION_GUARD_SCRIPT
+    assert "animation-play-state:paused!important" in OWNER_COCKPIT_MOTION_GUARD_STYLE
 
 
 def test_owner_navigation_leads_with_overview_cockpit() -> None:
