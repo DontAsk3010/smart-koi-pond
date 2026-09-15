@@ -107,10 +107,19 @@ def test_causal_view_uses_canonical_filtration_hydraulic_and_water_evidence() ->
 
 
 def test_causal_view_never_equates_valve_command_with_cleaning_success() -> None:
-    assert "Valve command or feedback ON does not prove filter cleaning." in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
+    assert (
+        "Valve command or feedback ON does not prove filter cleaning."
+        in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
+    )
     assert "NO COMPLETION / RECOVERY CLAIM" in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
-    assert "BACKWASH IN PROGRESS — NO COMPLETION CLAIM" in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
-    assert "Current values are evidence, not proof of physical filter cleanliness." in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
+    assert (
+        "BACKWASH IN PROGRESS — NO COMPLETION CLAIM"
+        in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
+    )
+    assert (
+        "Current values are evidence, not proof of physical filter cleanliness."
+        in FILTRATION_BACKWASH_CAUSALITY_SCRIPT
+    )
     for forbidden in (
         "BACKWASH SUCCESS",
         "FILTER CLEAN SUCCESS",
@@ -145,4 +154,7 @@ def test_mechanical_process_evidence_survives_governed_backwash_and_playback() -
     history = service.history(limit=20)
     frame = history[-1]
     playback = service.playback(frame["frame_sequence"])["snapshot"]
-    assert playback["hydraulics"]["mechanical_filtration"] == frame["snapshot"]["hydraulics"]["mechanical_filtration"]
+    assert (
+        playback["hydraulics"]["mechanical_filtration"]
+        == frame["snapshot"]["hydraulics"]["mechanical_filtration"]
+    )
