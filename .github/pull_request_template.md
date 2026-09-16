@@ -1,18 +1,18 @@
 # Smart Koi Pond — Material Change PR
 
 ## Responsibility
-- **IMPLEMENTER:** Claude
-- **INDEPENDENT REVIEWER:** ChatGPT
+- **PRIMARY IMPLEMENTER:** ChatGPT
+- **OPTIONAL SECOND-OPINION REVIEWER:** Claude / other independent reviewer when requested
 - **BASE ACCEPTED MAIN:** `<sha>`
 - **PR HEAD:** `<sha>`
 
-> If the owner explicitly reassigned this named implementation task away from Claude, state the exception and owner instruction here.
+> ACTIVE Handbook V0.19 §46 governs this assignment. If the owner explicitly reassigns a named task, record the exact exception here. An optional reviewer is never a substitute for Drive authority or reproducible evidence.
 
 ## Governing authority
 List the exact Drive authority/specification sections that govern this change.
 
 - Project Router reviewed: [ ]
-- ACTIVE Handbook reviewed: [ ]
+- ACTIVE Handbook V0.19 reviewed: [ ]
 - Current State reviewed: [ ]
 - ACTIVE Portable Handoff reviewed: [ ]
 - Relevant governed spec(s) reviewed: [ ]
@@ -21,7 +21,7 @@ List the exact Drive authority/specification sections that govern this change.
 ## Problem / requirement
 Describe the owner requirement, governed OPEN item, or reproducible defect.
 
-## Claude design / implementation
+## ChatGPT design / implementation
 Explain the engineering reasoning, affected canonical path, and why the implementation belongs in the existing runtime rather than a second engine.
 
 ## Files changed
@@ -48,14 +48,21 @@ Record exact results from this PR head.
 - Visual acceptance, if affected:
 - Deployment/Windows packaging, if affected:
 
+## Evidence-backed self-audit
+- **AUDITED HEAD:** `<sha>`
+- **AUTHORITY CHECK:** PENDING
+- **DIFF / ARCHITECTURE CHECK:** PENDING
+- **FAILURE-PATH / NO-FABRICATION CHECK:** PENDING
+- **VALIDATION CHECK:** PENDING
+- **DISPOSITION:** `PENDING / ACCEPTABLE / CHANGES REQUIRED / HOLD`
+
+## Optional independent second opinion
+- **REVIEW REQUIRED BY OWNER:** `NO / YES`
+- **REVIEWER:** `Claude / other / N/A`
+- **REVIEWED HEAD:** `<sha / N/A>`
+- **FINDINGS:** `N/A` unless review requested/performed
+
 ## Risks / OPEN / HOLD items
 List unresolved governance, timing, threshold, hardware, source-water, persistence or commissioning items explicitly.
 
-## ChatGPT independent review
-- **REVIEWED HEAD:** `<sha>`
-- **AUTHORITY CHECK:** PENDING
-- **FINDINGS:** PENDING
-- **VALIDATION CHECK:** PENDING
-- **DISPOSITION:** `PENDING / APPROVE / CHANGES REQUIRED / HOLD`
-
-A material PR is not accepted solely because CI is green. Claude addresses review findings; ChatGPT re-reviews the corrected head before promotion.
+A material PR is not accepted solely because CI is green. Acceptance requires alignment with current Drive authority, reproducible validation, and no unresolved authority/safety/evidence blocker. Claude review is optional unless the owner explicitly makes it a named gate.
